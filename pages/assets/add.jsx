@@ -1,0 +1,14 @@
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
+import { db } from "../../lib/firebase";
+import ProtectedRoute from "../../components/ProtectedRoute";
+import Layout from "../../components/Layout";
+
+export default function AddAsset(){
+ const router=useRouter(); const [workers,setWorkers]=useState([]); const [image,setImage]=useState(null); const [loading,setLoading]=useState(false); const [form,setForm]=useState({name:"",status:"صالحة",workerId:"",notes:""});
+ useEffect(()=>{getDocs(collection(db,"workers")).then(s=>setWorkers(s.docs.map(d=>({id:d.id,...d.data()}))));},[]);
+ const upload=async()=>{const cloudName=process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME; const preset=process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET; const data=new FormData(); data.append("file",image); data.append("upload_preset",preset); const res=await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,{method:"POST",body:data}); const json=await res.json(); if(!json.secure_url) throw new Error("Upload failed"); return json.secure_url;};
+ const submit=async(e)=>{e.preventDefault(); if(!form.name||!form.workerId||!image) return alert("برجاء إدخال اسم المعدة واختيار العامل والصورة"); setLoading(true); try{const worker=workers.find(w=>w.id===form.workerId); const imageUrl=await upload(); await addDoc(collection(db,"assets"),{name:form.name,status:form.status,workerId:form.workerId,workerName:worker?.name||"",imageUrl,notes:form.notes,createdAt:serverTimestamp(),updatedAt:serverTimestamp()}); router.push("/assets");}catch(e){alert("حدث خطأ أثناء الحفظ"); setLoading(false);}};
+ return <ProtectedRoute><Layout title="إضافة عهدة"><form onSubmit={submit} className="page-card max-w-2xl p-5 space-y-4"><input className="form-input" placeholder="اسم المعدة" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><div className="grid gap-4 md:grid-cols-2"><select className="form-input" value={form.workerId} onChange={e=>setForm({...form,workerId:e.target.value})}><option value="">اختر العامل</option>{workers.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select><select className="form-input" value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>صالحة</option><option>صيانة</option><option>تالفة</option></select></div><input type="file" accept="image/*" capture="environment" className="form-input" onChange={e=>setImage(e.target.files?.[0]||null)}/><textarea className="form-input h-28" placeholder="ملاحظات" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><button disabled={loading} className="btn-primary">{loading?"جاري الحفظ والرفع...":"حفظ العهدة"}</button></form></Layout></ProtectedRoute>;
+}
