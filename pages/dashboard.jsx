@@ -19,5 +19,50 @@ export default function Dashboard(){
   {title:"المعدات العاطلة",value:stats.broken,href:"/assets?status=عاطل",icon:faTriangleExclamation,sub:"تحتاج متابعة أو صيانة"},
   {title:"المعدات التالفة",value:stats.damaged,href:"/assets?status=تالف",icon:faCircleXmark,sub:"خارج الخدمة أو تالفة"},
  ];
- return <ProtectedRoute><Layout title="لوحة التحكم"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{cards.map(c=><Link key={c.title} href={c.href} className="page-card group p-5 transition hover:-translate-y-1 hover:shadow-lg"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-bold text-slate-500">{c.title}</p><h3 className="mt-2 text-4xl font-black text-slate-900">{c.value}</h3><p className="mt-2 text-xs text-slate-400">{c.sub}</p></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-700 group-hover:bg-green-700 group-hover:text-white"><FontAwesomeIcon icon={c.icon}/></div></div></Link>)}</div><div className="mt-6 grid gap-4 xl:grid-cols-2"><div className="page-card p-5"><h3 className="mb-4 font-black">آخر المعدات المسجلة</h3><div className="space-y-3">{assets.slice(0,5).map(a=><Link href={`/assets/edit/${a.id}`} key={a.id} className="flex items-center justify-between rounded-2xl border border-slate-100 p-3 hover:bg-slate-50"><span className="font-bold">{a.name}</span><span className="text-sm text-slate-500">{a.status}</span></Link>)}</div></div><div className="page-card p-5"><h3 className="mb-4 font-black">تنبيه سريع</h3><p className="text-sm leading-7 text-slate-600">أي كارت في الإحصائيات قابل للضغط لعرض البيانات المرتبطة به. المعدات يمكن ربطها بأكثر من عامل، وكل عامل ستظهر له كل المعدات التي استلمها في صفحة التفاصيل.</p></div></div></Layout></ProtectedRoute>;
+ return (
+  <ProtectedRoute>
+    <Layout title="لوحة التحكم">
+      {/* قسم الكروت العلوية */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {cards.map((c) => (
+          <Link
+            key={c.title}
+            href={c.href}
+            className="page-card group p-5 transition hover:-translate-y-1 hover:shadow-lg"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-slate-500">{c.title}</p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">{c.value}</h3>
+                <p className="mt-2 text-xs text-slate-400">{c.sub}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-50 text-green-700 group-hover:bg-green-700 group-hover:text-white">
+                <FontAwesomeIcon icon={c.icon} />
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* قسم المعدات المسجلة - تم التعديل هنا ليصبح في المنتصف */}
+      <div className="mt-6 flex justify-center">
+        <div className="page-card w-full max-w-4xl p-5">
+          <h3 className="mb-4 font-black">آخر المعدات المسجلة</h3>
+          <div className="space-y-3">
+            {assets.slice(0, 5).map((a) => (
+              <Link
+                href={`/assets/edit/${a.id}`}
+                key={a.id}
+                className="flex items-center justify-between rounded-2xl border border-slate-100 p-3 hover:bg-slate-50"
+              >
+                <span className="font-bold">{a.name}</span>
+                <span className="text-sm text-slate-500">{a.status}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Layout>
+  </ProtectedRoute>
+);
 }
