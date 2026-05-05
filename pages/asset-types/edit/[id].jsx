@@ -1,0 +1,7 @@
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { db } from "../../../lib/firebase";
+import ProtectedRoute from "../../../components/ProtectedRoute";
+import Layout from "../../../components/Layout";
+export default function EditAssetType(){const router=useRouter(); const {id}=router.query; const [form,setForm]=useState({name:"",notes:""}); const [loading,setLoading]=useState(false); useEffect(()=>{if(id)getDoc(doc(db,"assetTypes",id)).then(s=>{if(s.exists())setForm({name:s.data().name||"",notes:s.data().notes||""})})},[id]); const submit=async(e)=>{e.preventDefault(); if(!form.name.trim())return alert("اسم نوع المعدة مطلوب"); setLoading(true); await updateDoc(doc(db,"assetTypes",id),{name:form.name.trim(),notes:form.notes,updatedAt:serverTimestamp()}); router.push("/asset-types");}; return <ProtectedRoute><Layout title="تعديل نوع معدة"><form onSubmit={submit} className="page-card max-w-2xl space-y-4 p-5"><input className="form-input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><textarea className="form-input h-28" placeholder="ملاحظات" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/><button disabled={loading} className="btn-primary">{loading?"جاري التحديث...":"تحديث النوع"}</button></form></Layout></ProtectedRoute>}
