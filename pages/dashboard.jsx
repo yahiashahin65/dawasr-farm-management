@@ -1,0 +1,207 @@
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { collection, getDocs, orderBy, query, limit } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import ProtectedRoute from "../components/ProtectedRoute";
+import Layout from "../components/Layout";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faTractor,
+  faUsers,
+  faWheatAwn,
+  faCircleCheck,
+  faTriangleExclamation,
+  faCircleXmark,
+  faUserTie,
+  faWarehouse,
+  faLayerGroup,
+  faLocationDot,
+  faChartPie,
+  faRightLeft,
+} from "@fortawesome/free-solid-svg-icons";
+import { badgeClass, getAssetTypeName, getPlaceName, getStatusCounts, isAssetWithoutValidType, normalizeList } from "../lib/inventory";
+
+function StatCard({ title, value, href, icon, sub, tone = "green" }) {
+  const tones = {
+    green: "bg-green-50 text-green-700 group-hover:bg-green-700",
+    amber: "bg-amber-50 text-amber-700 group-hover:bg-amber-600",
+    red: "bg-red-50 text-red-700 group-hover:bg-red-600",
+    slate: "bg-slate-100 text-slate-700 group-hover:bg-slate-900",
+    blue: "bg-blue-50 text-blue-700 group-hover:bg-blue-700",
+  };
+
+  return (
+    <Link href={href} className="page-card group p-5 transition hover:-translate-y-1 hover:shadow-lg">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold text-slate-500">{title}</p>
+          <h3 className="mt-2 text-4xl font-black text-slate-900">{value}</h3>
+          {sub ? <p className="mt-2 text-xs text-slate-400">{sub}</p> : null}
+        </div>
+        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} group-hover:text-white`}>
+          <FontAwesomeIcon icon={icon} />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function MiniTable({ title, items, empty = "لا توجد بيانات" }) {
+  return (
+    <div className="page-card p-5">
+      <h3 className="mb-4 font-black">{title}</h3>
+      <div className="space-y-2">
+        {items.length ? (
+          items.map((item, index) => (
+            <Link key={`${item.label}-${index}`} href={item.href} className="flex items-center justify-between rounded-2xl border border-slate-100 p-3 hover:bg-slate-50">
+              <span className="font-bold text-slate-700">{item.label}</span>
+              <span className="badge bg-slate-100 text-slate-700">{item.count}</span>
+            </Link>
+          ))
+        ) : (
+          <p className="text-sm text-slate-400">{empty}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [assets, setAssets] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const [farms, setFarms] = useState([]);
+  const [engineers, setEngineers] = useState([]);
+  const [kubras, setKubras] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [movements, setMovements] = useState([]);
+
+  useEffect(() => {
+    Promise.all([
+      getDocs(query(collection(db, "assets"), orderBy("createdAt", "desc"))),
+      getDocs(collection(db, "workers")),
+      getDocs(collection(db, "farms")),
+      getDocs(collection(db, "engineers")),
+      getDocs(collection(db, "kubras")),
+      getDocs(collection(db, "assetTypes")),
+      getDocs(query(collection(db, "assetMovements"), orderBy("createdAt", "desc"), limit(8))).catch(() => getDocs(collection(db, "assetMovements"))),
+    ]).then(([a, w, f, e, k, t, m]) => {
+      setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setWorkers(normalizeList(w.docs));
+      setFarms(normalizeList(f.docs));
+      setEngineers(normalizeList(e.docs));
+      setKubras(normalizeList(k.docs));
+      setTypes(normalizeList(t.docs));
+      setMovements(m.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 8));
+    });
+  }, []);
+
+  const stats = useMemo(() => getStatusCounts(assets), [assets]);
+  const validTypeIds = useMemo(() => types.map((type) => type.id), [types]);
+  const invalidTypesCount = useMemo(() => assets.filter((asset) => isAssetWithoutValidType(asset, validTypeIds)).length, [assets, validTypeIds]);
+  const healthRate = stats.total ? Math.round((stats.good / stats.total) * 100) : 0;
+
+  const cards = [
+    { title: "إجمالي المعدات", value: stats.total, href: "/assets", icon: faTractor, sub: "كل المعدات والعهد", tone: "slate" },
+    { title: "المعدات الصالحة", value: stats.good, href: "/assets?status=صالح", icon: faCircleCheck, sub: "اضغط لعرض الصالح", tone: "green" },
+    { title: "المعدات العاطلة", value: stats.broken, href: "/assets?status=عاطل", icon: faTriangleExclamation, sub: "تحتاج متابعة", tone: "amber" },
+    { title: "المعدات التالفة", value: stats.damaged, href: "/assets?status=تالف", icon: faCircleXmark, sub: "خارج الخدمة", tone: "red" },
+    { title: "داخل المزارع", value: stats.inFarms, href: "/assets?placeType=farm", icon: faWheatAwn, sub: "معدات موجودة في المزارع", tone: "green" },
+    { title: "داخل الكِبر", value: stats.inKubras, href: "/assets?placeType=kubra", icon: faWarehouse, sub: "معدات موجودة في الكِبر", tone: "blue" },
+    { title: "أنواع المعدات", value: types.length, href: "/asset-types", icon: faLayerGroup, sub: "إضافة وتعديل الأنواع", tone: "slate" },
+    { title: "بيانات تحتاج تصحيح", value: invalidTypesCount, href: "/asset-types", icon: faTriangleExclamation, sub: "معدات بدون نوع صحيح", tone: invalidTypesCount ? "amber" : "green" },
+    { title: "العمال", value: workers.length, href: "/workers", icon: faUsers, sub: "كل العمال", tone: "blue" },
+    { title: "المزارع", value: farms.length, href: "/farms", icon: faLocationDot, sub: "كل المزارع", tone: "green" },
+    { title: "المهندسون", value: engineers.length, href: "/engineers", icon: faUserTie, sub: "مسئولو المزارع", tone: "slate" },
+    { title: "نسبة الصالح", value: `${healthRate}%`, href: "/assets?status=صالح", icon: faChartPie, sub: "مؤشر سريع لحالة الجرد", tone: healthRate >= 70 ? "green" : "amber" },
+  ];
+
+  const byType = types
+    .map((type) => ({ label: type.name, count: assets.filter((asset) => asset.assetTypeId === type.id).length, href: `/assets?assetTypeId=${type.id}` }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byFarm = farms
+    .map((farm) => ({ label: farm.name, count: assets.filter((asset) => asset.farmId === farm.id || asset.placeId === farm.id).length, href: `/assets?farmId=${farm.id}` }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byKubra = kubras
+    .map((kubra) => ({ label: kubra.name, count: assets.filter((asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id).length, href: `/assets?kubraId=${kubra.id}` }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byWorker = workers
+    .map((worker) => ({ label: worker.name, count: assets.filter((asset) => (asset.workerIds || []).includes(worker.id)).length, href: `/assets?workerId=${worker.id}` }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  return (
+    <ProtectedRoute>
+      <Layout title="لوحة التحكم">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+          {cards.map((card) => <StatCard key={card.title} {...card} />)}
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          <MiniTable title="إحصائيات حسب نوع المعدة" items={byType} />
+          <MiniTable title="إحصائيات حسب المزرعة" items={byFarm} />
+          <MiniTable title="إحصائيات حسب الكِبرة" items={byKubra} />
+          <MiniTable title="إحصائيات حسب العامل" items={byWorker} />
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+          <div className="page-card overflow-x-auto">
+            <h3 className="p-5 pb-2 font-black">آخر المعدات المسجلة</h3>
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="table-th">المعدة</th>
+                  <th className="table-th">النوع</th>
+                  <th className="table-th">المكان</th>
+                  <th className="table-th">الحالة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assets.slice(0, 8).map((asset) => (
+                  <tr key={asset.id} className="clickable-row border-t border-slate-100">
+                    <td className="table-td font-bold"><Link href={`/assets/${asset.id}`}>{asset.name}</Link></td>
+                    <td className="table-td">{getAssetTypeName(asset)}</td>
+                    <td className="table-td">{getPlaceName(asset)}</td>
+                    <td className="table-td"><Link href={`/assets?status=${asset.status}`} className={`badge ${badgeClass(asset.status)}`}>{asset.status}</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="page-card overflow-x-auto">
+            <h3 className="p-5 pb-2 font-black">آخر حركات النقل</h3>
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="table-th">المعدة</th>
+                  <th className="table-th">من</th>
+                  <th className="table-th">إلى</th>
+                  <th className="table-th">عرض</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((movement) => (
+                  <tr key={movement.id} className="clickable-row border-t border-slate-100">
+                    <td className="table-td font-bold">{movement.assetName || "-"}</td>
+                    <td className="table-td">{movement.fromPlaceName || "-"}</td>
+                    <td className="table-td">{movement.toPlaceName || "-"}</td>
+                    <td className="table-td">
+                      {movement.assetId ? <Link className="btn-secondary !py-2" href={`/assets/${movement.assetId}`}><FontAwesomeIcon icon={faRightLeft} /> التفاصيل</Link> : "-"}
+                    </td>
+                  </tr>
+                ))}
+                {movements.length === 0 && <tr><td className="table-td text-center" colSpan="4">لا توجد حركات نقل</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Layout>
+    </ProtectedRoute>
+  );
+}
