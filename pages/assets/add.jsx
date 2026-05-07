@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import {
   addDoc,
   collection,
   getDocs,
   serverTimestamp,
+  writeBatch,
+  doc,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
@@ -34,40 +36,32 @@ export default function AddAsset() {
   });
 
   useEffect(() => {
-    getDocs(collection(db, "workers")).then((s) =>
-      setWorkers(
-        s.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "")
-      )
-    );
+    const loadData = async () => {
+      const [workersSnap, farmsSnap, kubrasSnap, typesSnap] =
+        await Promise.all([
+          getDocs(collection(db, "workers")),
+          getDocs(collection(db, "farms")),
+          getDocs(collection(db, "kubras")),
+          getDocs(collection(db, "assetTypes")),
+        ]);
 
-    getDocs(collection(db, "farms")).then((s) =>
-      setFarms(
-        s.docs
+      const clean = (snap) =>
+        snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "")
-      )
-    );
+          .filter((item) => item.name && item.name.trim() !== "");
 
-    getDocs(collection(db, "kubras")).then((s) =>
-      setKubras(
-        s.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "")
-      )
-    );
+      setWorkers(clean(workersSnap));
+      setFarms(clean(farmsSnap));
+      setKubras(clean(kubrasSnap));
+      setTypes(clean(typesSnap));
+    };
 
-    getDocs(collection(db, "assetTypes")).then((s) =>
-      setTypes(
-        s.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "")
-      )
-    );
+    loadData();
   }, []);
 
-  const places = form.placeType === "farm" ? farms : kubras;
+  const places = useMemo(() => {
+    return form.placeType === "farm" ? farms : kubras;
+  }, [form.placeType, farms, kubras]);
 
   const toggleWorker = (id) => {
     setForm((prev) => ({
@@ -78,11 +72,15 @@ export default function AddAsset() {
     }));
   };
 
-  const upload = async () => {
+  const uploadImage = async () => {
     if (!image) return "";
 
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
     const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !preset) {
+      throw new Error("Cloudinary environment variables are missing");
+    }
 
     const data = new FormData();
     data.append("file", image);
@@ -98,8 +96,8 @@ export default function AddAsset() {
 
     const json = await res.json();
 
-    if (!json.secure_url) {
-      throw new Error("Upload failed");
+    if (!res.ok || !json.secure_url) {
+      throw new Error(json?.error?.message || "Upload failed");
     }
 
     return json.secure_url;
@@ -108,7 +106,9 @@ export default function AddAsset() {
   const submit = async (e) => {
     e.preventDefault();
 
-    if (!form.name || !form.assetTypeId || !form.placeId) {
+    if (loading) return;
+
+    if (!form.name.trim() || !form.assetTypeId || !form.placeId) {
       alert("اسم المعدة ونوع المعدة ومكان المعدة مطلوبين");
       return;
     }
@@ -122,7 +122,10 @@ export default function AddAsset() {
         form.workerIds.includes(w.id)
       );
 
-      const imageUrl = await upload();
+      const imageUrl = await uploadImage();
+
+      const assetRef = doc(collection(db, "assets"));
+      const movementRef = doc(collection(db, "assetMovements"));
 
       const payload = {
         name: form.name.trim(),
@@ -161,10 +164,12 @@ export default function AddAsset() {
         updatedAt: serverTimestamp(),
       };
 
-      const ref = await addDoc(collection(db, "assets"), payload);
+      const batch = writeBatch(db);
 
-      await addDoc(collection(db, "assetMovements"), {
-        assetId: ref.id,
+      batch.set(assetRef, payload);
+
+      batch.set(movementRef, {
+        assetId: assetRef.id,
         assetName: form.name.trim(),
 
         fromPlaceType: "",
@@ -179,10 +184,12 @@ export default function AddAsset() {
         createdAt: serverTimestamp(),
       });
 
+      await batch.commit();
+
       router.push("/assets");
     } catch (error) {
       console.error(error);
-      alert("حدث خطأ أثناء الحفظ");
+      alert(error.message || "حدث خطأ أثناء الحفظ");
       setLoading(false);
     }
   };
@@ -241,9 +248,7 @@ export default function AddAsset() {
             <select
               className="form-input"
               value={form.placeId}
-              onChange={(e) =>
-                setForm({ ...form, placeId: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, placeId: e.target.value })}
             >
               <option value="">
                 اختر {form.placeType === "farm" ? "المزرعة" : "الكِبرة"}
@@ -310,10 +315,10 @@ export default function AddAsset() {
           />
 
           <button disabled={loading} className="btn-primary">
-            {loading ? "جاري الحفظ والرفع..." : "حفظ المعدة"}
+            {loading ? "جاري الحفظ..." : "حفظ المعدة"}
           </button>
         </form>
       </Layout>
     </ProtectedRoute>
   );
-}
+                  }
