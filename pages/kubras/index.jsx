@@ -1,7 +1,84 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, deleteDoc, doc, getDocs, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+} from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
-export default function Kubras(){const [items,setItems]=useState([]); const load=async()=>{const s=await getDocs(query(collection(db,"kubras"),orderBy("createdAt","desc"))); setItems(s.docs.map(d=>({id:d.id,...d.data()})));}; useEffect(()=>{load();},[]); const remove=async(id)=>{if(confirm("حذف الكِبرة؟")){await deleteDoc(doc(db,"kubras",id)); load();}}; return <ProtectedRoute><Layout title="الكِبر"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-slate-500">يمكن تسجيل معدات داخل المزرعة أو داخل الكِبرة.</p><Link href="/kubras/add" className="btn-primary">إضافة كِبرة</Link></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map(x=><div key={x.id} className="page-card p-5"><h3 className="text-lg font-black">{x.name}</h3><p className="mt-2 text-sm text-slate-500">{x.notes||"-"}</p><div className="mt-4 flex gap-2"><Link className="btn-secondary" href={`/kubras/${x.id}`}>عرض</Link><Link className="btn-secondary" href={`/kubras/edit/${x.id}`}>تعديل</Link><button className="btn-danger" onClick={()=>remove(x.id)}>حذف</button></div></div>)}</div></Layout></ProtectedRoute>}
+import useUserRole from "../../hooks/useUserRole";
+
+export default function Kubras() {
+  const { canManage } = useUserRole();
+  const [items, setItems] = useState([]);
+
+  const load = async () => {
+    const s = await getDocs(
+      query(collection(db, "kubras"), orderBy("createdAt", "desc"))
+    );
+
+    setItems(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const remove = async (id) => {
+    if (!canManage) return;
+
+    if (confirm("حذف الكِبرة؟")) {
+      await deleteDoc(doc(db, "kubras", id));
+      load();
+    }
+  };
+
+  return (
+    <ProtectedRoute>
+      <Layout title="الكِبر">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div />
+
+          {canManage && (
+            <Link href="/kubras/add" className="btn-primary">
+              إضافة كِبرة
+            </Link>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((x) => (
+            <div key={x.id} className="page-card p-5">
+              <h3 className="text-lg font-black">{x.name}</h3>
+
+              <p className="mt-2 text-sm text-slate-500">{x.notes || "-"}</p>
+
+              <div className="mt-4 flex gap-2">
+                <Link className="btn-secondary" href={`/kubras/${x.id}`}>
+                  عرض
+                </Link>
+
+                {canManage && (
+                  <>
+                    <Link className="btn-secondary" href={`/kubras/edit/${x.id}`}>
+                      تعديل
+                    </Link>
+
+                    <button className="btn-danger" onClick={() => remove(x.id)}>
+                      حذف
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Layout>
+    </ProtectedRoute>
+  );
+}
