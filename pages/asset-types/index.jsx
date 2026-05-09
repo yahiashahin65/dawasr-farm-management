@@ -15,11 +15,14 @@ import {
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import useUserRole from "../../hooks/useUserRole";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faPen, faTrash, faEye, faRotate } from "@fortawesome/free-solid-svg-icons";
 import { DEFAULT_ASSET_TYPE_NAME, cleanName, normalizeList, isAssetWithoutValidType } from "../../lib/inventory";
 
 export default function AssetTypes() {
+  const { canManage } = useUserRole();
+
   const [items, setItems] = useState([]);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,6 +70,8 @@ export default function AssetTypes() {
   };
 
   const migrateOldAssets = async () => {
+    if (!canManage) return;
+
     setLoading(true);
 
     try {
@@ -108,6 +113,8 @@ export default function AssetTypes() {
   };
 
   const remove = async (id) => {
+    if (!canManage) return;
+
     if (confirm("هل تريد حذف نوع المعدة؟")) {
       await deleteDoc(doc(db, "assetTypes", id));
       await load();
@@ -121,19 +128,24 @@ export default function AssetTypes() {
       <Layout title="أنواع المعدات">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
-            <Link href="/asset-types/add" className="btn-primary">
-              <FontAwesomeIcon icon={faPlus} />
-              إضافة نوع
-            </Link>
-            <button
-              type="button"
-              onClick={migrateOldAssets}
-              disabled={loading}
-              className="btn-secondary"
-            >
-              <FontAwesomeIcon icon={faRotate} />
-              {loading ? "جاري الربط..." : "ربط المعدات بدون نوع بمكينة"}
-            </button>
+            {canManage && (
+              <>
+                <Link href="/asset-types/add" className="btn-primary">
+                  <FontAwesomeIcon icon={faPlus} />
+                  إضافة نوع
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={migrateOldAssets}
+                  disabled={loading}
+                  className="btn-secondary"
+                >
+                  <FontAwesomeIcon icon={faRotate} />
+                  {loading ? "جاري الربط..." : "ربط المعدات بدون نوع بمكينة"}
+                </button>
+              </>
+            )}
           </div>
 
           <Link href="/assets" className="btn-secondary">
@@ -141,7 +153,7 @@ export default function AssetTypes() {
           </Link>
         </div>
 
-        {unlinkedCount > 0 && (
+        {canManage && unlinkedCount > 0 && (
           <div className="mb-4 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
             يوجد {unlinkedCount} معدة بدون نوع صحيح. اضغط زر الربط لتصحيح البيانات.
           </div>
@@ -178,12 +190,18 @@ export default function AssetTypes() {
                       <Link href={`/assets?assetTypeId=${type.id}`} className="btn-secondary !p-2">
                         <FontAwesomeIcon icon={faEye} />
                       </Link>
-                      <Link href={`/asset-types/edit/${type.id}`} className="btn-secondary !p-2">
-                        <FontAwesomeIcon icon={faPen} />
-                      </Link>
-                      <button type="button" onClick={() => remove(type.id)} className="btn-danger !p-2">
-                        <FontAwesomeIcon icon={faTrash} />
-                      </button>
+
+                      {canManage && (
+                        <>
+                          <Link href={`/asset-types/edit/${type.id}`} className="btn-secondary !p-2">
+                            <FontAwesomeIcon icon={faPen} />
+                          </Link>
+
+                          <button type="button" onClick={() => remove(type.id)} className="btn-danger !p-2">
+                            <FontAwesomeIcon icon={faTrash} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
