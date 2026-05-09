@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
+import useUserRole from "../hooks/useUserRole";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faGaugeHigh,
@@ -28,6 +29,8 @@ const links = [
 
 export default function Layout({ children, title = "لوحة التحكم" }) {
   const router = useRouter();
+  const { role } = useUserRole();
+
   const logout = async () => {
     await signOut(auth);
     router.push("/login");
@@ -38,6 +41,10 @@ export default function Layout({ children, title = "لوحة التحكم" }) {
       <aside className="fixed right-0 top-0 z-20 hidden h-full w-72 border-l border-slate-200 bg-white p-5 shadow-sm lg:block">
         <div className="mb-8 rounded-3xl bg-green-900 p-5 text-white">
           <h1 className="text-xl font-black">مزارع السنبلة</h1>
+
+          <p className="mt-2 text-xs font-bold text-green-100">
+            {role === "admin" ? "مدير النظام" : "مشاهدة فقط"}
+          </p>
         </div>
 
         <nav className="space-y-2">
@@ -74,7 +81,13 @@ export default function Layout({ children, title = "لوحة التحكم" }) {
 
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-4 backdrop-blur lg:mr-72">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-xl font-black text-slate-900">{title}</h2>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">{title}</h2>
+            <p className="mt-1 text-xs font-bold text-slate-500 lg:hidden">
+              {role === "admin" ? "مدير النظام" : "مشاهدة فقط"}
+            </p>
+          </div>
+
           <nav className="flex gap-2 overflow-x-auto lg:hidden">
             {links.map((item) => (
               <Link
