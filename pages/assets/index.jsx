@@ -5,6 +5,7 @@ import { collection, deleteDoc, doc, getDocs, orderBy, query } from "firebase/fi
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import useUserRole from "../../hooks/useUserRole";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPlus,
@@ -21,6 +22,8 @@ import { badgeClass, getAssetTypeName, getPlaceName, getPlaceTypeLabel, normaliz
 
 export default function Assets() {
   const router = useRouter();
+  const { canManage } = useUserRole();
+
   const [items, setItems] = useState([]);
   const [types, setTypes] = useState([]);
   const [farms, setFarms] = useState([]);
@@ -84,6 +87,8 @@ export default function Assets() {
   };
 
   const remove = async (id) => {
+    if (!canManage) return;
+
     if (confirm("هل تريد حذف المعدة؟")) {
       await deleteDoc(doc(db, "assets", id));
       load();
@@ -147,10 +152,13 @@ export default function Assets() {
               <FontAwesomeIcon icon={view === "table" ? faTableCells : faTableList} />
               {view === "table" ? "عرض كروت" : "عرض جدول"}
             </button>
-            <Link href="/assets/add" className="btn-primary">
-              <FontAwesomeIcon icon={faPlus} />
-              إضافة معدة
-            </Link>
+
+            {canManage && (
+              <Link href="/assets/add" className="btn-primary">
+                <FontAwesomeIcon icon={faPlus} />
+                إضافة معدة
+              </Link>
+            )}
           </div>
         </div>
 
@@ -247,9 +255,14 @@ export default function Assets() {
                     <td className="table-td">
                       <div className="flex gap-2">
                         <Link href={`/assets/${asset.id}`} className="btn-secondary !p-2"><FontAwesomeIcon icon={faEye} /></Link>
-                        <Link href={`/assets/move/${asset.id}`} className="btn-secondary !p-2"><FontAwesomeIcon icon={faRightLeft} /></Link>
-                        <Link href={`/assets/edit/${asset.id}`} className="btn-secondary !p-2"><FontAwesomeIcon icon={faPen} /></Link>
-                        <button onClick={() => remove(asset.id)} className="btn-danger !p-2"><FontAwesomeIcon icon={faTrash} /></button>
+
+                        {canManage && (
+                          <>
+                            <Link href={`/assets/move/${asset.id}`} className="btn-secondary !p-2"><FontAwesomeIcon icon={faRightLeft} /></Link>
+                            <Link href={`/assets/edit/${asset.id}`} className="btn-secondary !p-2"><FontAwesomeIcon icon={faPen} /></Link>
+                            <button onClick={() => remove(asset.id)} className="btn-danger !p-2"><FontAwesomeIcon icon={faTrash} /></button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -279,7 +292,10 @@ export default function Assets() {
                   </div>
                   <div className="mt-4 flex gap-2">
                     <Link href={`/assets/${asset.id}`} className="btn-secondary">عرض</Link>
-                    <Link href={`/assets/move/${asset.id}`} className="btn-secondary">نقل</Link>
+
+                    {canManage && (
+                      <Link href={`/assets/move/${asset.id}`} className="btn-secondary">نقل</Link>
+                    )}
                   </div>
                 </div>
               </div>
