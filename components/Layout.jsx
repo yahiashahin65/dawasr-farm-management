@@ -14,17 +14,21 @@ import {
   faWarehouse,
   faLayerGroup,
   faChartLine,
+  faScrewdriverWrench,
+  faRightLeft,
 } from "@fortawesome/free-solid-svg-icons";
 
 const links = [
   { href: "/dashboard", label: "لوحة التحكم", icon: faGaugeHigh },
   { href: "/reports", label: "التقارير", icon: faChartLine },
+  { href: "/assets", label: "الأصول والعهد", icon: faTractor },
+  { href: "/assets/workshop", label: "الأصول في الورش", icon: faScrewdriverWrench },
+  { href: "/assets/movements", label: "سجل الحركات", icon: faRightLeft },
   { href: "/engineers", label: "المهندسون", icon: faUserTie },
   { href: "/farms", label: "المزارع", icon: faWheatAwn },
   { href: "/kubras", label: "الكِبر", icon: faWarehouse },
-  { href: "/asset-types", label: "أنواع المعدات", icon: faLayerGroup },
+  { href: "/asset-types", label: "أنواع الأصول", icon: faLayerGroup },
   { href: "/workers", label: "العمال", icon: faUsers },
-  { href: "/assets", label: "المعدات والعهد", icon: faTractor },
 ];
 
 export default function Layout({ children, title = "لوحة التحكم" }) {
@@ -83,6 +87,7 @@ export default function Layout({ children, title = "لوحة التحكم" }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-black text-slate-900">{title}</h2>
+
             <p className="mt-1 text-xs font-bold text-slate-500 lg:hidden">
               {role === "admin" ? "مدير النظام" : "مشاهدة فقط"}
             </p>
@@ -94,7 +99,8 @@ export default function Layout({ children, title = "لوحة التحكم" }) {
                 key={item.href}
                 href={item.href}
                 className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold ${
-                  router.pathname === item.href || router.pathname.startsWith(item.href + "/")
+                  router.pathname === item.href ||
+                  router.pathname.startsWith(item.href + "/")
                     ? "bg-green-700 text-white"
                     : "bg-slate-100 text-slate-700"
                 }`}
