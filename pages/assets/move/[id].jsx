@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+
 import { useRouter } from "next/router";
+
 import {
   addDoc,
   collection,
@@ -15,94 +17,120 @@ import { db } from "../../../lib/firebase";
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 
-const statuses = ["صالح", "عاطل", "في الورشة"];
-
 export default function MoveAsset() {
   const router = useRouter();
+
   const { id } = router.query;
 
-  const [asset, setAsset] = useState(null);
+  const [asset, setAsset] =
+    useState(null);
 
-  const [farms, setFarms] = useState([]);
-  const [kubras, setKubras] = useState([]);
+  const [farms, setFarms] =
+    useState([]);
 
-  const [loading, setLoading] = useState(false);
+  const [kubras, setKubras] =
+    useState([]);
 
-  const [form, setForm] = useState({
-    placeType: "farm",
-    placeId: "",
-    externalWorkshopName: "",
-    status: "صالح",
-    reason: "",
-  });
+  const [loading, setLoading] =
+    useState(false);
+
+  const [form, setForm] =
+    useState({
+      placeType: "farm",
+
+      placeId: "",
+
+      externalWorkshopName:
+        "",
+
+      reason: "",
+    });
 
   useEffect(() => {
-    const loadLists = async () => {
-      const [farmsSnap, kubrasSnap] = await Promise.all([
-        getDocs(collection(db, "farms")),
-        getDocs(collection(db, "kubras")),
-      ]);
+    getDocs(collection(db, "farms")).then(
+      (s) =>
+        setFarms(
+          s.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        )
+    );
 
-      const clean = (snap) =>
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "");
-
-      setFarms(clean(farmsSnap));
-      setKubras(clean(kubrasSnap));
-    };
-
-    loadLists();
+    getDocs(
+      collection(db, "kubras")
+    ).then((s) =>
+      setKubras(
+        s.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+      )
+    );
   }, []);
 
   useEffect(() => {
     if (!id) return;
 
-    getDoc(doc(db, "assets", id)).then((snap) => {
-      if (!snap.exists()) return;
+    getDoc(doc(db, "assets", id)).then(
+      (s) => {
+        if (!s.exists()) return;
 
-      const data = { id: snap.id, ...snap.data() };
+        const d = {
+          id: s.id,
+          ...s.data(),
+        };
 
-      setAsset(data);
+        setAsset(d);
 
-      setForm((prev) => ({
-        ...prev,
-        placeType: data.placeType || "farm",
-        placeId:
-          data.placeId ||
-          data.farmId ||
-          data.kubraId ||
-          "",
-        externalWorkshopName:
-          data.externalWorkshopName || "",
-        status: data.status || "صالح",
-      }));
-    });
+        setForm((p) => ({
+          ...p,
+
+          placeType:
+            d.placeType || "farm",
+
+          placeId:
+            d.placeId ||
+            d.farmId ||
+            d.kubraId ||
+            "",
+
+          externalWorkshopName:
+            d.externalWorkshopName ||
+            "",
+        }));
+      }
+    );
   }, [id]);
 
-  const places = useMemo(() => {
-    if (form.placeType === "farm") return farms;
-    if (form.placeType === "kubra") return kubras;
-    return [];
-  }, [form.placeType, farms, kubras]);
+  const places =
+    form.placeType === "farm"
+      ? farms
+      : kubras;
 
   const submit = async (e) => {
     e.preventDefault();
 
     const isExternalWorkshop =
-      form.placeType === "external_workshop";
+      form.placeType ===
+      "external_workshop";
 
-    if (!isExternalWorkshop && !form.placeId) {
-      alert("اختر المكان الجديد");
-      return;
+    if (
+      !isExternalWorkshop &&
+      !form.placeId
+    ) {
+      return alert(
+        "اختر المكان الجديد"
+      );
     }
 
     if (
       isExternalWorkshop &&
       !form.externalWorkshopName.trim()
     ) {
-      alert("اسم الورشة الخارجية مطلوب");
-      return;
+      return alert(
+        "اسم الورشة الخارجية مطلوب"
+      );
     }
 
     setLoading(true);
@@ -110,93 +138,145 @@ export default function MoveAsset() {
     try {
       const place = isExternalWorkshop
         ? null
-        : places.find((x) => x.id === form.placeId);
+        : places.find(
+            (x) =>
+              x.id === form.placeId
+          );
 
-      const placeId = isExternalWorkshop
-        ? ""
-        : form.placeId;
+      const placeId =
+        isExternalWorkshop
+          ? ""
+          : form.placeId;
 
-      const placeName = isExternalWorkshop
-        ? form.externalWorkshopName.trim()
-        : place?.name || "";
+      const placeName =
+        isExternalWorkshop
+          ? form.externalWorkshopName.trim()
+          : place?.name || "";
 
-      const finalStatus = isExternalWorkshop
-        ? "في الورشة"
-        : form.status;
+      const newStatus =
+        isExternalWorkshop
+          ? "في الورشة"
+          : asset?.status ===
+            "في الورشة"
+          ? "صالح"
+          : asset?.status;
 
-      await updateDoc(doc(db, "assets", id), {
-        placeType: form.placeType,
-        placeId,
-        placeName,
+      await updateDoc(
+        doc(db, "assets", id),
+        {
+          placeType:
+            form.placeType,
 
-        status: finalStatus,
+          placeId,
 
-        currentPlace: {
-          type: form.placeType,
-          id: placeId,
-          name: placeName,
-        },
+          placeName,
 
-        farmId:
-          form.placeType === "farm"
-            ? form.placeId
-            : "",
+          currentPlace: {
+            type: form.placeType,
+            id: placeId,
+            name: placeName,
+          },
 
-        farmName:
-          form.placeType === "farm"
-            ? placeName
-            : "",
+          farmId:
+            form.placeType === "farm"
+              ? form.placeId
+              : "",
 
-        kubraId:
-          form.placeType === "kubra"
-            ? form.placeId
-            : "",
+          farmName:
+            form.placeType === "farm"
+              ? placeName
+              : "",
 
-        kubraName:
-          form.placeType === "kubra"
-            ? placeName
-            : "",
+          kubraId:
+            form.placeType === "kubra"
+              ? form.placeId
+              : "",
 
-        externalWorkshopName:
-          form.placeType === "external_workshop"
-            ? placeName
-            : "",
+          kubraName:
+            form.placeType === "kubra"
+              ? placeName
+              : "",
 
-        updatedAt: serverTimestamp(),
-      });
+          externalWorkshopName:
+            form.placeType ===
+            "external_workshop"
+              ? placeName
+              : "",
 
-      await addDoc(collection(db, "assetMovements"), {
-        assetId: id,
-        assetName: asset?.name || "",
+          status: newStatus,
 
-        movementType: "moved",
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
 
-        fromPlaceType: asset?.placeType || "",
-        fromPlaceId: asset?.placeId || "",
+      await addDoc(
+        collection(
+          db,
+          "assetMovements"
+        ),
+        {
+          assetId: id,
 
-        fromPlaceName:
-          asset?.placeName ||
-          asset?.farmName ||
-          asset?.kubraName ||
-          asset?.externalWorkshopName ||
-          "",
+          assetName:
+            asset?.name || "",
 
-        toPlaceType: form.placeType,
-        toPlaceId: placeId,
-        toPlaceName: placeName,
+          movementType:
+            isExternalWorkshop
+              ? "maintenance"
+              : "transfer",
 
-        status: finalStatus,
+          fromPlaceType:
+            asset?.placeType || "",
 
-        reason: form.reason || "نقل الأصل",
+          fromPlaceId:
+            asset?.placeId || "",
 
-        movedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-      });
+          fromPlaceName:
+            asset?.placeName ||
+            asset?.farmName ||
+            asset?.kubraName ||
+            asset?.externalWorkshopName ||
+            "",
 
-      router.push(`/assets/${id}`);
-    } catch (error) {
-      console.error(error);
-      alert("حدث خطأ أثناء النقل");
+          toPlaceType:
+            form.placeType,
+
+          toPlaceId: placeId,
+
+          toPlaceName:
+            placeName,
+
+          status: newStatus,
+
+          category:
+            asset?.category ||
+            "asset",
+
+          reason:
+            form.reason ||
+            (isExternalWorkshop
+              ? "إرسال للورشة"
+              : "نقل أصل"),
+
+          movedAt:
+            serverTimestamp(),
+
+          createdAt:
+            serverTimestamp(),
+        }
+      );
+
+      router.push(
+        `/assets/${id}`
+      );
+    } catch (e) {
+      console.error(e);
+
+      alert(
+        "حدث خطأ أثناء النقل"
+      );
+
       setLoading(false);
     }
   };
@@ -213,8 +293,7 @@ export default function MoveAsset() {
 
             <br />
 
-            المكان الحالي:
-            {" "}
+            المكان الحالي:{" "}
             {asset?.placeName ||
               asset?.farmName ||
               asset?.kubraName ||
@@ -229,16 +308,14 @@ export default function MoveAsset() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  placeType: e.target.value,
+
+                  placeType:
+                    e.target.value,
+
                   placeId: "",
-                  externalWorkshopName: "",
-                  status:
-                    e.target.value ===
-                    "external_workshop"
-                      ? "في الورشة"
-                      : form.status === "في الورشة"
-                      ? "صالح"
-                      : form.status,
+
+                  externalWorkshopName:
+                    "",
                 })
               }
             >
@@ -251,7 +328,7 @@ export default function MoveAsset() {
               </option>
 
               <option value="external_workshop">
-                نقل إلى ورشة خارجية
+                إرسال إلى ورشة
               </option>
             </select>
 
@@ -260,13 +337,15 @@ export default function MoveAsset() {
               <input
                 className="form-input"
                 placeholder="اسم الورشة الخارجية"
-                value={form.externalWorkshopName}
+                value={
+                  form.externalWorkshopName
+                }
                 onChange={(e) =>
                   setForm({
                     ...form,
+
                     externalWorkshopName:
                       e.target.value,
-                    status: "في الورشة",
                   })
                 }
               />
@@ -277,7 +356,8 @@ export default function MoveAsset() {
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    placeId: e.target.value,
+                    placeId:
+                      e.target.value,
                   })
                 }
               >
@@ -285,41 +365,17 @@ export default function MoveAsset() {
                   اختر المكان الجديد
                 </option>
 
-                {places.map((place) => (
+                {places.map((x) => (
                   <option
-                    key={place.id}
-                    value={place.id}
+                    key={x.id}
+                    value={x.id}
                   >
-                    {place.name}
+                    {x.name}
                   </option>
                 ))}
               </select>
             )}
           </div>
-
-          <select
-            className="form-input"
-            value={form.status}
-            disabled={
-              form.placeType ===
-              "external_workshop"
-            }
-            onChange={(e) =>
-              setForm({
-                ...form,
-                status: e.target.value,
-              })
-            }
-          >
-            {statuses.map((status) => (
-              <option
-                key={status}
-                value={status}
-              >
-                {status}
-              </option>
-            ))}
-          </select>
 
           <textarea
             className="form-input h-28"
@@ -328,7 +384,8 @@ export default function MoveAsset() {
             onChange={(e) =>
               setForm({
                 ...form,
-                reason: e.target.value,
+                reason:
+                  e.target.value,
               })
             }
           />
@@ -339,7 +396,7 @@ export default function MoveAsset() {
           >
             {loading
               ? "جاري النقل..."
-              : "حفظ حركة النقل"}
+              : "حفظ الحركة"}
           </button>
         </form>
       </Layout>
