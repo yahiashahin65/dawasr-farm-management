@@ -14,7 +14,7 @@ import Layout from "../../components/Layout";
 const statuses = ["صالح", "عاطل", "في الورشة"];
 
 const categories = [
-  { value: "equipment", label: "معدة" },
+  { value: "asset", label: "معدة" },
   { value: "spare_part", label: "قطعة غيار" },
   { value: "tool", label: "أداة" },
   { value: "material", label: "مواد" },
@@ -34,7 +34,7 @@ export default function AddAsset() {
   const [form, setForm] = useState({
     name: "",
     code: "",
-    category: "equipment",
+    category: "asset",
     assetTypeId: "",
     status: "صالح",
     placeType: "farm",
