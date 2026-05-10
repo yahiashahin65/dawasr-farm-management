@@ -260,9 +260,7 @@ export default function AddAsset() {
             <select
               className="form-input"
               value={form.category}
-              onChange={(e) =>
-                setForm({ ...form, category: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
             >
               {categories.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -315,8 +313,8 @@ export default function AddAsset() {
                     e.target.value === "external_workshop"
                       ? "في الورشة"
                       : form.status === "في الورشة"
-                        ? "صالح"
-                        : form.status,
+                      ? "صالح"
+                      : form.status,
                 })
               }
             >
@@ -342,9 +340,7 @@ export default function AddAsset() {
               <select
                 className="form-input"
                 value={form.placeId}
-                onChange={(e) =>
-                  setForm({ ...form, placeId: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, placeId: e.target.value })}
               >
                 <option value="">
                   اختر {form.placeType === "farm" ? "المزرعة" : "الكِبرة"}
@@ -398,12 +394,28 @@ export default function AddAsset() {
           </div>
 
           <div className="space-y-3">
-            <input
-              type="file"
-              accept="image/*"
-              className="form-input"
-              onChange={(e) => setImage(e.target.files?.[0] || null)}
-            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
+                تصوير بالكاميرا
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setImage(e.target.files?.[0] || null)}
+                />
+              </label>
+
+              <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
+                رفع من الجهاز
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setImage(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
 
             {imagePreview && (
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
