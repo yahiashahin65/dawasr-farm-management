@@ -17,7 +17,6 @@ const categories = [
   { value: "asset", label: "معدة" },
   { value: "spare_part", label: "قطعة غيار" },
   { value: "tool", label: "أداة" },
-  { value: "material", label: "مواد" },
 ];
 
 export default function AddAsset() {
