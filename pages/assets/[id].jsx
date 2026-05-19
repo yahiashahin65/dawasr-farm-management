@@ -25,7 +25,6 @@ const badgeClass = (status) => {
 const categoryLabel = (category) => {
   if (category === "spare_part") return "قطعة غيار";
   if (category === "tool") return "أداة";
-  if (category === "material") return "مواد";
   return "معدة";
 };
 
