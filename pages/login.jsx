@@ -30,8 +30,7 @@ export default function Login() {
         <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 text-green-700">
           <FontAwesomeIcon icon={faLock} className="h-6 w-6" />
         </div>
-        <h1 className="text-2xl font-black text-gray-900">تسجيل دخول المدير</h1>
-        <p className="mt-2 text-sm text-gray-500">ادخل بيانات حساب Firebase Auth للمتابعة.</p>
+        <h1 className="text-2xl font-black text-gray-900">تسجيل دخول</h1>
         <div className="mt-6 space-y-4">
           <input className="form-input" type="email" placeholder="البريد الإلكتروني" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <input className="form-input" type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} required />
