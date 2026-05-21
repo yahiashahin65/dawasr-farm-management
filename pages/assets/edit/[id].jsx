@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../../lib/firebase";
+import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
 
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
@@ -26,7 +27,6 @@ const categories = [
 
 export default function EditAsset() {
   const router = useRouter();
-
   const { id } = router.query;
 
   const [workers, setWorkers] = useState([]);
@@ -35,54 +35,34 @@ export default function EditAsset() {
   const [types, setTypes] = useState([]);
 
   const [image, setImage] = useState(null);
-
-  const [imagePreview, setImagePreview] =
-    useState("");
-
-  const [removeImage, setRemoveImage] =
-    useState(false);
-
+  const [imagePreview, setImagePreview] = useState("");
+  const [removeImage, setRemoveImage] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
     code: "",
-
     category: "asset",
-
     assetTypeId: "",
     assetTypeName: "",
-
     status: "صالح",
-
     placeType: "farm",
     placeId: "",
-
     externalWorkshopName: "",
-
     workerIds: [],
-
     notes: "",
-
     imageUrl: "",
   });
 
   useEffect(() => {
     const loadLists = async () => {
-      const [
-        workersSnap,
-        farmsSnap,
-        kubrasSnap,
-        typesSnap,
-      ] = await Promise.all([
-        getDocs(collection(db, "workers")),
-
-        getDocs(collection(db, "farms")),
-
-        getDocs(collection(db, "kubras")),
-
-        getDocs(collection(db, "assetTypes")),
-      ]);
+      const [workersSnap, farmsSnap, kubrasSnap, typesSnap] =
+        await Promise.all([
+          getDocs(collection(db, "workers")),
+          getDocs(collection(db, "farms")),
+          getDocs(collection(db, "kubras")),
+          getDocs(collection(db, "assetTypes")),
+        ]);
 
       const clean = (snap) =>
         snap.docs
@@ -90,18 +70,11 @@ export default function EditAsset() {
             id: d.id,
             ...d.data(),
           }))
-          .filter(
-            (item) =>
-              item.name &&
-              item.name.trim() !== ""
-          );
+          .filter((item) => item.name && item.name.trim() !== "");
 
       setWorkers(clean(workersSnap));
-
       setFarms(clean(farmsSnap));
-
       setKubras(clean(kubrasSnap));
-
       setTypes(clean(typesSnap));
     };
 
@@ -111,52 +84,35 @@ export default function EditAsset() {
   useEffect(() => {
     if (!id) return;
 
-    getDoc(doc(db, "assets", id)).then(
-      (snap) => {
-        if (!snap.exists()) return;
+    getDoc(doc(db, "assets", id)).then((snap) => {
+      if (!snap.exists()) return;
 
-        const data = snap.data();
+      const data = snap.data();
 
-        setForm((prev) => ({
-          ...prev,
-          ...data,
+      setForm((prev) => ({
+        ...prev,
+        ...data,
 
-          category:
-            data.category || "asset",
+        category: data.category || "asset",
 
-          assetTypeName:
-            data.assetTypeName || "مكينة",
+        assetTypeName: data.assetTypeName || "مكينة",
 
-          placeType:
-            data.placeType ||
-            data.currentPlace?.type ||
-            "farm",
+        placeType: data.placeType || data.currentPlace?.type || "farm",
 
-          placeId:
-            data.placeId ||
-            data.currentPlace?.id ||
-            data.farmId ||
-            data.kubraId ||
-            "",
+        placeId:
+          data.placeId || data.currentPlace?.id || data.farmId || data.kubraId || "",
 
-          externalWorkshopName:
-            data.externalWorkshopName ||
-            (data.placeType ===
-            "external_workshop"
-              ? data.placeName || ""
-              : ""),
+        externalWorkshopName:
+          data.externalWorkshopName ||
+          (data.placeType === "external_workshop" ? data.placeName || "" : ""),
 
-          workerIds:
-            data.workerIds || [],
+        workerIds: data.workerIds || [],
 
-          status:
-            data.status || "صالح",
+        status: data.status || "صالح",
 
-          imageUrl:
-            data.imageUrl || "",
-        }));
-      }
-    );
+        imageUrl: data.imageUrl || "",
+      }));
+    });
   }, [id]);
 
   useEffect(() => {
@@ -165,114 +121,55 @@ export default function EditAsset() {
       return;
     }
 
-    const previewUrl =
-      URL.createObjectURL(image);
-
+    const previewUrl = URL.createObjectURL(image);
     setImagePreview(previewUrl);
 
-    return () =>
-      URL.revokeObjectURL(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
   }, [image]);
 
   const places = useMemo(() => {
-    if (form.placeType === "farm")
-      return farms;
-
-    if (form.placeType === "kubra")
-      return kubras;
-
+    if (form.placeType === "farm") return farms;
+    if (form.placeType === "kubra") return kubras;
     return [];
-  }, [
-    form.placeType,
-    farms,
-    kubras,
-  ]);
+  }, [form.placeType, farms, kubras]);
 
   const toggleWorker = (workerId) => {
     setForm((prev) => ({
       ...prev,
 
-      workerIds:
-        prev.workerIds.includes(workerId)
-          ? prev.workerIds.filter(
-              (x) => x !== workerId
-            )
-          : [
-              ...prev.workerIds,
-              workerId,
-            ],
+      workerIds: prev.workerIds.includes(workerId)
+        ? prev.workerIds.filter((x) => x !== workerId)
+        : [...prev.workerIds, workerId],
     }));
   };
 
   const upload = async () => {
-    if (removeImage && !image)
-      return "";
+    if (removeImage && !image) return "";
 
-    if (!image)
-      return form.imageUrl || "";
+    if (!image) return form.imageUrl || "";
 
-    const cloudName =
-      process.env
-        .NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-
-    const preset =
-      process.env
-        .NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
-    const data = new FormData();
-
-    data.append("file", image);
-
-    data.append(
-      "upload_preset",
-      preset
-    );
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-      {
-        method: "POST",
-        body: data,
-      }
-    );
-
-    const json = await res.json();
-
-    if (!json.secure_url) {
-      throw new Error("Upload failed");
-    }
-
-    return json.secure_url;
+    return fileToFirestoreImage(image);
   };
 
   const submit = async (e) => {
     e.preventDefault();
 
-    const isExternalWorkshop =
-      form.placeType ===
-      "external_workshop";
+    if (loading) return;
+
+    const isExternalWorkshop = form.placeType === "external_workshop";
 
     if (!form.name.trim()) {
       alert("اسم الأصل مطلوب");
       return;
     }
 
-    if (
-      !isExternalWorkshop &&
-      !form.placeId
-    ) {
+    if (!isExternalWorkshop && !form.placeId) {
       alert("مكان الأصل مطلوب");
       return;
     }
 
-    if (
-      isExternalWorkshop &&
-      !form.externalWorkshopName.trim()
-    ) {
-      alert(
-        "اسم الورشة الخارجية مطلوب"
-      );
-
+    if (isExternalWorkshop && !form.externalWorkshopName.trim()) {
+      alert("اسم الورشة الخارجية مطلوب");
       return;
     }
 
@@ -281,130 +178,79 @@ export default function EditAsset() {
     try {
       const place = isExternalWorkshop
         ? null
-        : places.find(
-            (item) =>
-              item.id === form.placeId
-          );
+        : places.find((item) => item.id === form.placeId);
 
-      const placeId =
-        isExternalWorkshop
-          ? ""
-          : form.placeId;
+      const placeId = isExternalWorkshop ? "" : form.placeId;
 
-      const placeName =
-        isExternalWorkshop
-          ? form.externalWorkshopName.trim()
-          : place?.name || "";
+      const placeName = isExternalWorkshop
+        ? form.externalWorkshopName.trim()
+        : place?.name || "";
 
-      const type = types.find(
-        (t) =>
-          t.id === form.assetTypeId
+      const type = types.find((t) => t.id === form.assetTypeId);
+
+      const selectedWorkers = workers.filter((w) =>
+        form.workerIds.includes(w.id)
       );
-
-      const selectedWorkers =
-        workers.filter((w) =>
-          form.workerIds.includes(w.id)
-        );
 
       const imageUrl = await upload();
 
-      await updateDoc(
-        doc(db, "assets", id),
-        {
-          name: form.name.trim(),
+      await updateDoc(doc(db, "assets", id), {
+        name: form.name.trim(),
 
-          code: form.code || "",
+        code: form.code || "",
 
-          category:
-            form.category || "asset",
+        category: form.category || "asset",
 
-          assetTypeId:
-            form.assetTypeId || "",
+        assetTypeId: form.assetTypeId || "",
 
-          assetTypeName:
-            type?.name ||
-            form.assetTypeName ||
-            "مكينة",
+        assetTypeName: type?.name || form.assetTypeName || "مكينة",
 
-          status:
-            form.placeType ===
-            "external_workshop"
-              ? "في الورشة"
-              : form.status,
+        status: form.placeType === "external_workshop" ? "في الورشة" : form.status,
 
-          placeType:
-            form.placeType,
+        placeType: form.placeType,
 
-          placeId,
+        placeId,
 
-          placeName,
+        placeName,
 
-          currentPlace: {
-            type: form.placeType,
-            id: placeId,
-            name: placeName,
-          },
+        currentPlace: {
+          type: form.placeType,
+          id: placeId,
+          name: placeName,
+        },
 
-          farmId:
-            form.placeType === "farm"
-              ? form.placeId
-              : "",
+        farmId: form.placeType === "farm" ? form.placeId : "",
 
-          farmName:
-            form.placeType === "farm"
-              ? placeName
-              : "",
+        farmName: form.placeType === "farm" ? placeName : "",
 
-          kubraId:
-            form.placeType === "kubra"
-              ? form.placeId
-              : "",
+        kubraId: form.placeType === "kubra" ? form.placeId : "",
 
-          kubraName:
-            form.placeType === "kubra"
-              ? placeName
-              : "",
+        kubraName: form.placeType === "kubra" ? placeName : "",
 
-          externalWorkshopName:
-            form.placeType ===
-            "external_workshop"
-              ? placeName
-              : "",
+        externalWorkshopName:
+          form.placeType === "external_workshop" ? placeName : "",
 
-          workerIds:
-            form.workerIds,
+        workerIds: form.workerIds,
 
-          workers:
-            selectedWorkers.map((w) => ({
-              id: w.id,
-              name: w.name,
-              phone: w.phone || "",
-            })),
+        workers: selectedWorkers.map((w) => ({
+          id: w.id,
+          name: w.name,
+          phone: w.phone || "",
+        })),
 
-          workerNames:
-            selectedWorkers
-              .map((w) => w.name)
-              .join("، "),
+        workerNames: selectedWorkers.map((w) => w.name).join("، "),
 
-          imageUrl,
+        imageUrl,
 
-          notes:
-            form.notes || "",
+        notes: form.notes || "",
 
-          updatedAt:
-            serverTimestamp(),
-        }
-      );
+        updatedAt: serverTimestamp(),
+      });
 
       router.push("/assets");
     } catch (error) {
       console.error(error);
-
-      alert(
-        error.message ||
-          "حدث خطأ أثناء التحديث"
-      );
-
+      alert(error.message || "حدث خطأ أثناء التحديث");
       setLoading(false);
     }
   };
@@ -412,10 +258,7 @@ export default function EditAsset() {
   return (
     <ProtectedRoute>
       <Layout title="تعديل أصل">
-        <form
-          onSubmit={submit}
-          className="page-card max-w-5xl p-5 space-y-4"
-        >
+        <form onSubmit={submit} className="page-card max-w-5xl p-5 space-y-4">
           <div className="grid gap-4 md:grid-cols-4">
             <select
               className="form-input"
@@ -423,16 +266,12 @@ export default function EditAsset() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  category:
-                    e.target.value,
+                  category: e.target.value,
                 })
               }
             >
               {categories.map((item) => (
-                <option
-                  key={item.value}
-                  value={item.value}
-                >
+                <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
               ))}
@@ -440,27 +279,18 @@ export default function EditAsset() {
 
             <select
               className="form-input"
-              value={
-                form.assetTypeId || ""
-              }
+              value={form.assetTypeId || ""}
               onChange={(e) =>
                 setForm({
                   ...form,
-                  assetTypeId:
-                    e.target.value,
+                  assetTypeId: e.target.value,
                 })
               }
             >
-              <option value="">
-                {form.assetTypeName ||
-                  "اختر النوع"}
-              </option>
+              <option value="">{form.assetTypeName || "اختر النوع"}</option>
 
               {types.map((t) => (
-                <option
-                  key={t.id}
-                  value={t.id}
-                >
+                <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
@@ -473,8 +303,7 @@ export default function EditAsset() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  name:
-                    e.target.value,
+                  name: e.target.value,
                 })
               }
             />
@@ -486,8 +315,7 @@ export default function EditAsset() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  code:
-                    e.target.value,
+                  code: e.target.value,
                 })
               }
             />
@@ -501,56 +329,40 @@ export default function EditAsset() {
                 setForm({
                   ...form,
 
-                  placeType:
-                    e.target.value,
+                  placeType: e.target.value,
 
                   placeId: "",
 
-                  externalWorkshopName:
-                    "",
+                  externalWorkshopName: "",
 
                   status:
-                    e.target.value ===
-                    "external_workshop"
+                    e.target.value === "external_workshop"
                       ? "في الورشة"
-                      : form.status ===
-                        "في الورشة"
+                      : form.status === "في الورشة"
                       ? "صالح"
                       : form.status,
                 })
               }
             >
-              <option value="farm">
-                داخل مزرعة
-              </option>
+              <option value="farm">داخل مزرعة</option>
 
-              <option value="kubra">
-                داخل الكِبرة
-              </option>
+              <option value="kubra">داخل الكِبرة</option>
 
-              <option value="external_workshop">
-                ورشة خارجية
-              </option>
+              <option value="external_workshop">ورشة خارجية</option>
             </select>
 
-            {form.placeType ===
-            "external_workshop" ? (
+            {form.placeType === "external_workshop" ? (
               <input
                 className="form-input"
                 placeholder="اسم الورشة الخارجية"
-                value={
-                  form.externalWorkshopName ||
-                  ""
-                }
+                value={form.externalWorkshopName || ""}
                 onChange={(e) =>
                   setForm({
                     ...form,
 
-                    externalWorkshopName:
-                      e.target.value,
+                    externalWorkshopName: e.target.value,
 
-                    status:
-                      "في الورشة",
+                    status: "في الورشة",
                   })
                 }
               />
@@ -561,24 +373,16 @@ export default function EditAsset() {
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    placeId:
-                      e.target.value,
+                    placeId: e.target.value,
                   })
                 }
               >
                 <option value="">
-                  اختر{" "}
-                  {form.placeType ===
-                  "farm"
-                    ? "المزرعة"
-                    : "الكِبرة"}
+                  اختر {form.placeType === "farm" ? "المزرعة" : "الكِبرة"}
                 </option>
 
                 {places.map((place) => (
-                  <option
-                    key={place.id}
-                    value={place.id}
-                  >
+                  <option key={place.id} value={place.id}>
                     {place.name}
                   </option>
                 ))}
@@ -588,23 +392,16 @@ export default function EditAsset() {
             <select
               className="form-input"
               value={form.status}
-              disabled={
-                form.placeType ===
-                "external_workshop"
-              }
+              disabled={form.placeType === "external_workshop"}
               onChange={(e) =>
                 setForm({
                   ...form,
-                  status:
-                    e.target.value,
+                  status: e.target.value,
                 })
               }
             >
               {statuses.map((status) => (
-                <option
-                  key={status}
-                  value={status}
-                >
+                <option key={status} value={status}>
                   {status}
                 </option>
               ))}
@@ -621,23 +418,15 @@ export default function EditAsset() {
                 <label
                   key={worker.id}
                   className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 text-sm font-bold ${
-                    form.workerIds.includes(
-                      worker.id
-                    )
+                    form.workerIds.includes(worker.id)
                       ? "border-green-600 bg-green-50 text-green-800"
                       : "border-slate-200 bg-white text-slate-700"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={form.workerIds.includes(
-                      worker.id
-                    )}
-                    onChange={() =>
-                      toggleWorker(
-                        worker.id
-                      )
-                    }
+                    checked={form.workerIds.includes(worker.id)}
+                    onChange={() => toggleWorker(worker.id)}
                   />
 
                   {worker.name}
@@ -647,31 +436,26 @@ export default function EditAsset() {
           </div>
 
           <div className="space-y-3">
-            {form.imageUrl &&
-              !removeImage &&
-              !imagePreview && (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
-                  <img
-                    src={form.imageUrl}
-                    className="max-h-72 w-full rounded-2xl object-contain"
-                    alt="asset"
-                  />
+            {form.imageUrl && !removeImage && !imagePreview && (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+                <img
+                  src={form.imageUrl}
+                  className="max-h-72 w-full rounded-2xl object-contain"
+                  alt="asset"
+                />
 
-                  <button
-                    type="button"
-                    className="btn-secondary mt-3"
-                    onClick={() => {
-                      setRemoveImage(
-                        true
-                      );
-
-                      setImage(null);
-                    }}
-                  >
-                    حذف الصورة الحالية
-                  </button>
-                </div>
-              )}
+                <button
+                  type="button"
+                  className="btn-secondary mt-3"
+                  onClick={() => {
+                    setRemoveImage(true);
+                    setImage(null);
+                  }}
+                >
+                  حذف الصورة الحالية
+                </button>
+              </div>
+            )}
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
@@ -683,14 +467,8 @@ export default function EditAsset() {
                   capture="environment"
                   className="hidden"
                   onChange={(e) => {
-                    setImage(
-                      e.target.files?.[0] ||
-                        null
-                    );
-
-                    setRemoveImage(
-                      false
-                    );
+                    setImage(e.target.files?.[0] || null);
+                    setRemoveImage(false);
                   }}
                 />
               </label>
@@ -703,14 +481,8 @@ export default function EditAsset() {
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
-                    setImage(
-                      e.target.files?.[0] ||
-                        null
-                    );
-
-                    setRemoveImage(
-                      false
-                    );
+                    setImage(e.target.files?.[0] || null);
+                    setRemoveImage(false);
                   }}
                 />
               </label>
@@ -727,9 +499,7 @@ export default function EditAsset() {
                 <button
                   type="button"
                   className="btn-secondary mt-3"
-                  onClick={() =>
-                    setImage(null)
-                  }
+                  onClick={() => setImage(null)}
                 >
                   حذف الصورة المختارة
                 </button>
@@ -738,8 +508,7 @@ export default function EditAsset() {
 
             {removeImage && (
               <div className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
-                سيتم حذف الصورة الحالية
-                عند حفظ التعديل
+                سيتم حذف الصورة الحالية عند حفظ التعديل
               </div>
             )}
           </div>
@@ -751,26 +520,17 @@ export default function EditAsset() {
             onChange={(e) =>
               setForm({
                 ...form,
-                notes:
-                  e.target.value,
+                notes: e.target.value,
               })
             }
           />
 
           <div className="flex flex-wrap gap-2">
-            <button
-              disabled={loading}
-              className="btn-primary"
-            >
-              {loading
-                ? "جاري التحديث..."
-                : "تحديث الأصل"}
+            <button disabled={loading} className="btn-primary">
+              {loading ? "جاري التحديث..." : "تحديث الأصل"}
             </button>
 
-            <a
-              href={`/assets/move/${id}`}
-              className="btn-secondary"
-            >
+            <a href={`/assets/move/${id}`} className="btn-secondary">
               نقل الأصل
             </a>
           </div>
