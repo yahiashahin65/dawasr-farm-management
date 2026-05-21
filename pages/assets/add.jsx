@@ -8,6 +8,7 @@ import {
   doc,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
+import { fileToFirestoreImage } from "../../lib/imageToFirestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
@@ -96,33 +97,7 @@ export default function AddAsset() {
 
   const uploadImage = async () => {
     if (!image) return "";
-
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-
-    if (!cloudName || !preset) {
-      throw new Error("Cloudinary environment variables are missing");
-    }
-
-    const data = new FormData();
-    data.append("file", image);
-    data.append("upload_preset", preset);
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-      {
-        method: "POST",
-        body: data,
-      }
-    );
-
-    const json = await res.json();
-
-    if (!res.ok || !json.secure_url) {
-      throw new Error(json?.error?.message || "Upload failed");
-    }
-
-    return json.secure_url;
+    return fileToFirestoreImage(image);
   };
 
   const submit = async (e) => {
