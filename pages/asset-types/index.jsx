@@ -41,7 +41,13 @@ export default function AssetTypes() {
 
   const loadAssets = async () => {
     const assetsSnap = await getDocs(collection(db, "assets"));
-    setAssets(assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+    setAssets(
+      assetsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }))
+    );
   };
 
   const loadTypesPage = async (
@@ -86,10 +92,7 @@ export default function AssetTypes() {
       setInitialLoading(true);
 
       try {
-        await Promise.all([
-          loadAssets(),
-          loadTypesPage(1, null, false),
-        ]);
+        await Promise.all([loadAssets(), loadTypesPage(1, null, false)]);
       } finally {
         setInitialLoading(false);
       }
@@ -117,6 +120,7 @@ export default function AssetTypes() {
 
     if (confirm("هل تريد حذف نوع المعدة؟")) {
       await deleteDoc(doc(db, "assetTypes", id));
+
       await Promise.all([
         loadTypesPage(currentPage, pageCursors[currentPage] || null),
         loadAssets(),
@@ -180,12 +184,22 @@ export default function AssetTypes() {
                   key={type.id}
                   className="clickable-row border-t border-slate-100"
                 >
-                  <td className="table-td font-black">{type.name}</td>
+                  <td className="table-td font-black">
+                    <Link
+                      href={`/assets?assetTypeId=${type.id}`}
+                      className="text-green-700 hover:underline"
+                    >
+                      {type.name}
+                    </Link>
+                  </td>
 
                   <td className="table-td">
-                    <span className="badge bg-green-50 text-green-700">
+                    <Link
+                      href={`/assets?assetTypeId=${type.id}`}
+                      className="badge bg-green-50 text-green-700"
+                    >
                       {count(type)}
-                    </span>
+                    </Link>
                   </td>
 
                   <td className="table-td">{type.notes || "-"}</td>
