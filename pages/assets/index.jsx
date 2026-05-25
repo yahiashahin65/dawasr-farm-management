@@ -8,6 +8,8 @@ import {
   getDocs,
   orderBy,
   query,
+  limit,
+  startAfter,
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
@@ -38,9 +40,10 @@ import {
   normalizeList,
 } from "../../lib/inventory";
 
+const PAGE_SIZE = 10;
+
 export default function Assets() {
   const router = useRouter();
-
   const { canManage } = useUserRole();
 
   const [items, setItems] = useState([]);
@@ -48,6 +51,25 @@ export default function Assets() {
   const [farms, setFarms] = useState([]);
   const [kubras, setKubras] = useState([]);
   const [workers, setWorkers] = useState([]);
+
+  const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState({ 1: null });
+
+  const [stats, setStats] = useState({
+    total: 0,
+    good: 0,
+    broken: 0,
+    inWorkshop: 0,
+    equipment: 0,
+    spareParts: 0,
+    tools: 0,
+    materials: 0,
+    inFarms: 0,
+    inKubras: 0,
+    inExternalWorkshops: 0,
+  });
 
   const [filters, setFilters] = useState({
     status: "",
@@ -60,39 +82,94 @@ export default function Assets() {
   });
 
   const [search, setSearch] = useState("");
-
   const [preview, setPreview] = useState(null);
-
   const [view, setView] = useState("table");
 
-  const load = async () => {
-    const [a, t, f, k, w] = await Promise.all([
-      getDocs(
-        query(collection(db, "assets"), orderBy("createdAt", "desc"))
-      ),
+  const calculateStats = (assets) => ({
+    total: assets.length,
 
+    good: assets.filter((a) => a.status === "صالح").length,
+    broken: assets.filter((a) => a.status === "عاطل").length,
+    inWorkshop: assets.filter((a) => a.status === "في الورشة").length,
+
+    equipment: assets.filter((a) => (a.category || "asset") === "asset").length,
+    spareParts: assets.filter((a) => a.category === "spare_part").length,
+    tools: assets.filter((a) => a.category === "tool").length,
+    materials: assets.filter((a) => a.category === "material").length,
+
+    inFarms: assets.filter((a) => a.placeType === "farm").length,
+    inKubras: assets.filter((a) => a.placeType === "kubra").length,
+    inExternalWorkshops: assets.filter(
+      (a) => a.placeType === "external_workshop"
+    ).length,
+  });
+
+  const loadStats = async () => {
+    const snap = await getDocs(collection(db, "assets"));
+
+    const allAssets = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
+
+    setStats(calculateStats(allAssets));
+  };
+
+  const loadMetaData = async () => {
+    const [t, f, k, w] = await Promise.all([
       getDocs(collection(db, "assetTypes")),
-
       getDocs(collection(db, "farms")),
-
       getDocs(collection(db, "kubras")),
-
       getDocs(collection(db, "workers")),
     ]);
 
-    setItems(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-
     setTypes(normalizeList(t.docs));
-
     setFarms(normalizeList(f.docs));
-
     setKubras(normalizeList(k.docs));
-
     setWorkers(normalizeList(w.docs));
   };
 
+  const loadAssetsPage = async (pageNumber = 1, cursor = null) => {
+    setLoading(true);
+
+    try {
+      const constraints = [orderBy("createdAt", "desc")];
+
+      if (cursor) {
+        constraints.push(startAfter(cursor));
+      }
+
+      constraints.push(limit(PAGE_SIZE + 1));
+
+      const snap = await getDocs(query(collection(db, "assets"), ...constraints));
+
+      const docs = snap.docs;
+      const visibleDocs = docs.slice(0, PAGE_SIZE);
+
+      setItems(
+        visibleDocs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+      );
+
+      setHasNextPage(docs.length > PAGE_SIZE);
+
+      setPageCursors((prev) => ({
+        ...prev,
+        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
+      }));
+
+      setCurrentPage(pageNumber);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    load();
+    loadStats();
+    loadMetaData();
+    loadAssetsPage(1, null);
   }, []);
 
   useEffect(() => {
@@ -100,28 +177,12 @@ export default function Assets() {
 
     setFilters({
       status: q.status ? String(q.status) : "",
-
-      assetTypeId: q.assetTypeId
-        ? String(q.assetTypeId)
-        : "",
-
-      placeType: q.placeType
-        ? String(q.placeType)
-        : "",
-
+      assetTypeId: q.assetTypeId ? String(q.assetTypeId) : "",
+      placeType: q.placeType ? String(q.placeType) : "",
       farmId: q.farmId ? String(q.farmId) : "",
-
-      kubraId: q.kubraId
-        ? String(q.kubraId)
-        : "",
-
-      workerId: q.workerId
-        ? String(q.workerId)
-        : "",
-
-      category: q.category
-        ? String(q.category)
-        : "",
+      kubraId: q.kubraId ? String(q.kubraId) : "",
+      workerId: q.workerId ? String(q.workerId) : "",
+      category: q.category ? String(q.category) : "",
     });
   }, [router.query]);
 
@@ -143,7 +204,6 @@ export default function Assets() {
 
   const clearFilters = () => {
     setSearch("");
-
     router.push("/assets");
   };
 
@@ -153,7 +213,8 @@ export default function Assets() {
     if (confirm("هل تريد حذف الأصل؟")) {
       await deleteDoc(doc(db, "assets", id));
 
-      load();
+      await loadStats();
+      await loadAssetsPage(currentPage, pageCursors[currentPage] || null);
     }
   };
 
@@ -170,149 +231,70 @@ export default function Assets() {
 
         return (
           (!filters.category ||
-            (asset.category || "asset") ===
-              filters.category) &&
-
-          (!filters.status ||
-            asset.status === filters.status) &&
-
-          (!filters.assetTypeId ||
-            asset.assetTypeId ===
-              filters.assetTypeId) &&
-
-          (!filters.placeType ||
-            asset.placeType ===
-              filters.placeType) &&
-
+            (asset.category || "asset") === filters.category) &&
+          (!filters.status || asset.status === filters.status) &&
+          (!filters.assetTypeId || asset.assetTypeId === filters.assetTypeId) &&
+          (!filters.placeType || asset.placeType === filters.placeType) &&
           (!filters.farmId ||
             asset.farmId === filters.farmId ||
-            asset.placeId ===
-              filters.farmId) &&
-
+            asset.placeId === filters.farmId) &&
           (!filters.kubraId ||
             asset.kubraId === filters.kubraId ||
-            asset.placeId ===
-              filters.kubraId) &&
-
+            asset.placeId === filters.kubraId) &&
           (!filters.workerId ||
-            (asset.workerIds || []).includes(
-              filters.workerId
-            )) &&
-
-          (!search ||
-            haystack
-              .toLowerCase()
-              .includes(search.toLowerCase()))
+            (asset.workerIds || []).includes(filters.workerId)) &&
+          (!search || haystack.toLowerCase().includes(search.toLowerCase()))
         );
       }),
-
     [items, filters, search]
   );
 
   const quick = [
-    {
-      label: "الكل",
-      count: items.length,
-      key: "",
-      value: "",
-    },
-
-    {
-      label: "صالح",
-      count: items.filter(
-        (a) => a.status === "صالح"
-      ).length,
-      key: "status",
-      value: "صالح",
-    },
-
-    {
-      label: "عاطل",
-      count: items.filter(
-        (a) => a.status === "عاطل"
-      ).length,
-      key: "status",
-      value: "عاطل",
-    },
-
+    { label: "الكل", count: stats.total, key: "", value: "" },
+    { label: "صالح", count: stats.good, key: "status", value: "صالح" },
+    { label: "عاطل", count: stats.broken, key: "status", value: "عاطل" },
     {
       label: "في الورشة",
-      count: items.filter(
-        (a) => a.status === "في الورشة"
-      ).length,
+      count: stats.inWorkshop,
       key: "status",
       value: "في الورشة",
     },
-
-    {
-      label: "معدات",
-      count: items.filter(
-        (a) =>
-          (a.category || "asset") === "asset"
-      ).length,
-      key: "category",
-      value: "asset",
-    },
-
+    { label: "معدات", count: stats.equipment, key: "category", value: "asset" },
     {
       label: "قطع غيار",
-      count: items.filter(
-        (a) => a.category === "spare_part"
-      ).length,
+      count: stats.spareParts,
       key: "category",
       value: "spare_part",
     },
-
-    {
-      label: "أدوات",
-      count: items.filter(
-        (a) => a.category === "tool"
-      ).length,
-      key: "category",
-      value: "tool",
-    },
-
+    { label: "أدوات", count: stats.tools, key: "category", value: "tool" },
     {
       label: "داخل المزارع",
-      count: items.filter(
-        (a) => a.placeType === "farm"
-      ).length,
+      count: stats.inFarms,
       key: "placeType",
       value: "farm",
     },
-
     {
       label: "داخل الكِبر",
-      count: items.filter(
-        (a) => a.placeType === "kubra"
-      ).length,
+      count: stats.inKubras,
       key: "placeType",
       value: "kubra",
     },
-
     {
       label: "في الورش",
-      count: items.filter(
-        (a) =>
-          a.placeType ===
-          "external_workshop"
-      ).length,
+      count: stats.inExternalWorkshops,
       key: "placeType",
       value: "external_workshop",
     },
   ];
 
   const isQuickActive = (q) => {
-    if (!q.key)
-      return !Object.values(filters).some(Boolean);
+    if (!q.key) return !Object.values(filters).some(Boolean);
 
     return filters[q.key] === q.value;
   };
 
   const categoryLabel = (category) => {
-    if (category === "spare_part")
-      return "قطعة غيار";
-
+    if (category === "spare_part") return "قطعة غيار";
     if (category === "tool") return "أداة";
 
     return "معدة";
@@ -326,15 +308,9 @@ export default function Assets() {
             {quick.map((q) => (
               <button
                 key={q.label}
-                onClick={() =>
-                  q.key
-                    ? setFilter(q.key, q.value)
-                    : clearFilters()
-                }
+                onClick={() => (q.key ? setFilter(q.key, q.value) : clearFilters())}
                 className={`btn-secondary ${
-                  isQuickActive(q)
-                    ? "!bg-slate-900 !text-white"
-                    : ""
+                  isQuickActive(q) ? "!bg-slate-900 !text-white" : ""
                 }`}
               >
                 {q.label} {q.count}
@@ -343,42 +319,24 @@ export default function Assets() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={clearFilters}
-              className="btn-secondary"
-            >
+            <button onClick={clearFilters} className="btn-secondary">
               <FontAwesomeIcon icon={faBroom} />
               مسح الفلاتر
             </button>
 
             <button
-              onClick={() =>
-                setView(
-                  view === "table"
-                    ? "grid"
-                    : "table"
-                )
-              }
+              onClick={() => setView(view === "table" ? "grid" : "table")}
               className="btn-secondary"
             >
               <FontAwesomeIcon
-                icon={
-                  view === "table"
-                    ? faTableCells
-                    : faTableList
-                }
+                icon={view === "table" ? faTableCells : faTableList}
               />
 
-              {view === "table"
-                ? "عرض كروت"
-                : "عرض جدول"}
+              {view === "table" ? "عرض كروت" : "عرض جدول"}
             </button>
 
             {canManage && (
-              <Link
-                href="/assets/add"
-                className="btn-primary"
-              >
+              <Link href="/assets/add" className="btn-primary">
                 <FontAwesomeIcon icon={faPlus} />
                 إضافة أصل
               </Link>
@@ -397,58 +355,30 @@ export default function Assets() {
               className="w-full bg-transparent p-2 outline-none"
               placeholder="بحث باسم الأصل أو النوع أو المكان أو العامل"
               value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
-              }
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
           <select
             className="form-input"
             value={filters.category}
-            onChange={(e) =>
-              setFilter(
-                "category",
-                e.target.value
-              )
-            }
+            onChange={(e) => setFilter("category", e.target.value)}
           >
-            <option value="">
-              كل التصنيفات
-            </option>
-
-            <option value="asset">
-              معدات
-            </option>
-
-            <option value="spare_part">
-              قطع غيار
-            </option>
-
-            <option value="tool">
-              أدوات
-            </option>
+            <option value="">كل التصنيفات</option>
+            <option value="asset">معدات</option>
+            <option value="spare_part">قطع غيار</option>
+            <option value="tool">أدوات</option>
           </select>
 
           <select
             className="form-input"
             value={filters.assetTypeId}
-            onChange={(e) =>
-              setFilter(
-                "assetTypeId",
-                e.target.value
-              )
-            }
+            onChange={(e) => setFilter("assetTypeId", e.target.value)}
           >
-            <option value="">
-              كل الأنواع
-            </option>
+            <option value="">كل الأنواع</option>
 
             {types.map((t) => (
-              <option
-                key={t.id}
-                value={t.id}
-              >
+              <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
@@ -457,22 +387,12 @@ export default function Assets() {
           <select
             className="form-input"
             value={filters.farmId}
-            onChange={(e) =>
-              setFilter(
-                "farmId",
-                e.target.value
-              )
-            }
+            onChange={(e) => setFilter("farmId", e.target.value)}
           >
-            <option value="">
-              كل المزارع
-            </option>
+            <option value="">كل المزارع</option>
 
             {farms.map((f) => (
-              <option
-                key={f.id}
-                value={f.id}
-              >
+              <option key={f.id} value={f.id}>
                 {f.name}
               </option>
             ))}
@@ -481,22 +401,12 @@ export default function Assets() {
           <select
             className="form-input"
             value={filters.kubraId}
-            onChange={(e) =>
-              setFilter(
-                "kubraId",
-                e.target.value
-              )
-            }
+            onChange={(e) => setFilter("kubraId", e.target.value)}
           >
-            <option value="">
-              كل الكِبر
-            </option>
+            <option value="">كل الكِبر</option>
 
             {kubras.map((k) => (
-              <option
-                key={k.id}
-                value={k.id}
-              >
+              <option key={k.id} value={k.id}>
                 {k.name}
               </option>
             ))}
@@ -505,22 +415,12 @@ export default function Assets() {
           <select
             className="form-input"
             value={filters.workerId}
-            onChange={(e) =>
-              setFilter(
-                "workerId",
-                e.target.value
-              )
-            }
+            onChange={(e) => setFilter("workerId", e.target.value)}
           >
-            <option value="">
-              كل العمال
-            </option>
+            <option value="">كل العمال</option>
 
             {workers.map((w) => (
-              <option
-                key={w.id}
-                value={w.id}
-              >
+              <option key={w.id} value={w.id}>
                 {w.name}
               </option>
             ))}
@@ -528,45 +428,28 @@ export default function Assets() {
         </div>
 
         <div className="mb-3 text-sm font-bold text-slate-500">
-          المعروض: {filtered.length} من {items.length}
+          المعروض في هذه الصفحة: {filtered.length} من إجمالي {stats.total}
         </div>
+
+        {loading && (
+          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
+            جاري تحميل البيانات...
+          </div>
+        )}
 
         {view === "table" ? (
           <div className="page-card overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="table-th">
-                    الصورة
-                  </th>
-
-                  <th className="table-th">
-                    الأصل
-                  </th>
-
-                  <th className="table-th">
-                    التصنيف
-                  </th>
-
-                  <th className="table-th">
-                    نوع الأصل
-                  </th>
-
-                  <th className="table-th">
-                    المكان الحالي
-                  </th>
-
-                  <th className="table-th">
-                    العمال
-                  </th>
-
-                  <th className="table-th">
-                    الحالة
-                  </th>
-
-                  <th className="table-th">
-                    إجراءات
-                  </th>
+                  <th className="table-th">الصورة</th>
+                  <th className="table-th">الأصل</th>
+                  <th className="table-th">التصنيف</th>
+                  <th className="table-th">نوع الأصل</th>
+                  <th className="table-th">المكان الحالي</th>
+                  <th className="table-th">العمال</th>
+                  <th className="table-th">الحالة</th>
+                  <th className="table-th">إجراءات</th>
                 </tr>
               </thead>
 
@@ -578,11 +461,7 @@ export default function Assets() {
                   >
                     <td className="table-td">
                       {asset.imageUrl ? (
-                        <button
-                          onClick={() =>
-                            setPreview(asset)
-                          }
-                        >
+                        <button onClick={() => setPreview(asset)}>
                           <img
                             src={asset.imageUrl}
                             alt={asset.name}
@@ -595,9 +474,7 @@ export default function Assets() {
                     </td>
 
                     <td className="table-td">
-                      <Link
-                        href={`/assets/${asset.id}`}
-                      >
+                      <Link href={`/assets/${asset.id}`}>
                         <b>{asset.name}</b>
 
                         <p className="text-xs text-slate-400">
@@ -608,20 +485,14 @@ export default function Assets() {
 
                     <td className="table-td">
                       <span className="badge bg-purple-50 text-purple-700">
-                        {categoryLabel(
-                          asset.category
-                        )}
+                        {categoryLabel(asset.category)}
                       </span>
                     </td>
 
                     <td className="table-td">
                       {asset.assetTypeId ? (
-                        <Link
-                          href={`/assets?assetTypeId=${asset.assetTypeId}`}
-                        >
-                          {getAssetTypeName(
-                            asset
-                          )}
+                        <Link href={`/assets?assetTypeId=${asset.assetTypeId}`}>
+                          {getAssetTypeName(asset)}
                         </Link>
                       ) : (
                         getAssetTypeName(asset)
@@ -631,29 +502,17 @@ export default function Assets() {
                     <td className="table-td">
                       <Link
                         href={
-                          asset.placeType ===
-                          "kubra"
-                            ? `/assets?kubraId=${
-                                asset.kubraId ||
-                                asset.placeId
-                              }`
-                            : asset.placeType ===
-                              "external_workshop"
+                          asset.placeType === "kubra"
+                            ? `/assets?kubraId=${asset.kubraId || asset.placeId}`
+                            : asset.placeType === "external_workshop"
                             ? `/assets?placeType=external_workshop`
-                            : `/assets?farmId=${
-                                asset.farmId ||
-                                asset.placeId
-                              }`
+                            : `/assets?farmId=${asset.farmId || asset.placeId}`
                         }
                       >
-                        <b>
-                          {getPlaceName(asset)}
-                        </b>
+                        <b>{getPlaceName(asset)}</b>
 
                         <p className="text-xs text-slate-400">
-                          {getPlaceTypeLabel(
-                            asset.placeType
-                          )}
+                          {getPlaceTypeLabel(asset.placeType)}
                         </p>
                       </Link>
                     </td>
@@ -665,9 +524,7 @@ export default function Assets() {
                     <td className="table-td">
                       <Link
                         href={`/assets?status=${asset.status}`}
-                        className={`badge ${badgeClass(
-                          asset.status
-                        )}`}
+                        className={`badge ${badgeClass(asset.status)}`}
                       >
                         {asset.status}
                       </Link>
@@ -679,9 +536,7 @@ export default function Assets() {
                           href={`/assets/${asset.id}`}
                           className="btn-secondary !p-2"
                         >
-                          <FontAwesomeIcon
-                            icon={faEye}
-                          />
+                          <FontAwesomeIcon icon={faEye} />
                         </Link>
 
                         {canManage && (
@@ -690,31 +545,21 @@ export default function Assets() {
                               href={`/assets/move/${asset.id}`}
                               className="btn-secondary !p-2"
                             >
-                              <FontAwesomeIcon
-                                icon={
-                                  faRightLeft
-                                }
-                              />
+                              <FontAwesomeIcon icon={faRightLeft} />
                             </Link>
 
                             <Link
                               href={`/assets/edit/${asset.id}`}
                               className="btn-secondary !p-2"
                             >
-                              <FontAwesomeIcon
-                                icon={faPen}
-                              />
+                              <FontAwesomeIcon icon={faPen} />
                             </Link>
 
                             <button
-                              onClick={() =>
-                                remove(asset.id)
-                              }
+                              onClick={() => remove(asset.id)}
                               className="btn-danger !p-2"
                             >
-                              <FontAwesomeIcon
-                                icon={faTrash}
-                              />
+                              <FontAwesomeIcon icon={faTrash} />
                             </button>
                           </>
                         )}
@@ -725,10 +570,7 @@ export default function Assets() {
 
                 {filtered.length === 0 && (
                   <tr>
-                    <td
-                      className="table-td text-center"
-                      colSpan="8"
-                    >
+                    <td className="table-td text-center" colSpan="8">
                       لا توجد أصول مطابقة
                     </td>
                   </tr>
@@ -739,15 +581,9 @@ export default function Assets() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((asset) => (
-              <div
-                key={asset.id}
-                className="page-card overflow-hidden"
-              >
+              <div key={asset.id} className="page-card overflow-hidden">
                 <button
-                  onClick={() =>
-                    asset.imageUrl &&
-                    setPreview(asset)
-                  }
+                  onClick={() => asset.imageUrl && setPreview(asset)}
                   className="block h-44 w-full bg-slate-100"
                 >
                   {asset.imageUrl ? (
@@ -760,47 +596,32 @@ export default function Assets() {
                 </button>
 
                 <div className="p-4">
-                  <Link
-                    href={`/assets/${asset.id}`}
-                    className="text-lg font-black"
-                  >
+                  <Link href={`/assets/${asset.id}`} className="text-lg font-black">
                     {asset.name}
                   </Link>
 
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="badge bg-purple-50 text-purple-700">
-                      {categoryLabel(
-                        asset.category
-                      )}
+                      {categoryLabel(asset.category)}
                     </span>
                   </div>
 
                   <p className="mt-2 text-sm text-slate-500">
-                    {getAssetTypeName(asset)} -{" "}
-                    {getPlaceName(asset)}
+                    {getAssetTypeName(asset)} - {getPlaceName(asset)}
                   </p>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span
-                      className={`badge ${badgeClass(
-                        asset.status
-                      )}`}
-                    >
+                    <span className={`badge ${badgeClass(asset.status)}`}>
                       {asset.status}
                     </span>
 
                     <span className="badge bg-slate-100 text-slate-600">
-                      {getPlaceTypeLabel(
-                        asset.placeType
-                      )}
+                      {getPlaceTypeLabel(asset.placeType)}
                     </span>
                   </div>
 
                   <div className="mt-4 flex gap-2">
-                    <Link
-                      href={`/assets/${asset.id}`}
-                      className="btn-secondary"
-                    >
+                    <Link href={`/assets/${asset.id}`} className="btn-secondary">
                       عرض
                     </Link>
 
@@ -819,27 +640,45 @@ export default function Assets() {
           </div>
         )}
 
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button
+            disabled={currentPage === 1 || loading}
+            onClick={() =>
+              loadAssetsPage(currentPage - 1, pageCursors[currentPage - 1] || null)
+            }
+            className="btn-secondary disabled:opacity-50"
+          >
+            السابق
+          </button>
+
+          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+
+          <button
+            disabled={!hasNextPage || loading}
+            onClick={() =>
+              loadAssetsPage(currentPage + 1, pageCursors[currentPage + 1])
+            }
+            className="btn-secondary disabled:opacity-50"
+          >
+            التالي
+          </button>
+        </div>
+
         {preview && (
           <div
             onClick={() => setPreview(null)}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
           >
             <div
-              onClick={(e) =>
-                e.stopPropagation()
-              }
+              onClick={(e) => e.stopPropagation()}
               className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-3xl bg-white p-4"
             >
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-black">
-                  {preview.name}
-                </h3>
+                <h3 className="font-black">{preview.name}</h3>
 
                 <button
                   className="btn-secondary !py-2"
-                  onClick={() =>
-                    setPreview(null)
-                  }
+                  onClick={() => setPreview(null)}
                 >
                   إغلاق
                 </button>
