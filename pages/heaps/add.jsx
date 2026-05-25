@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { fileToFirestoreImage } from "../../lib/imageToFirestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
 const cropTypes = ["برسيم", "رودس", "تبن"];
+
 export default function AddHeapPage() {
   const router = useRouter();
 
@@ -18,6 +24,7 @@ export default function AddHeapPage() {
   const [form, setForm] = useState({
     pileName: "",
     farmId: "",
+    cropType: "برسيم",
     sprinklerName: "",
     bricksCount: "",
     notes: "",
@@ -69,6 +76,11 @@ export default function AddHeapPage() {
       return;
     }
 
+    if (!form.cropType) {
+      alert("نوع الكوم مطلوب");
+      return;
+    }
+
     if (!form.sprinklerName.trim()) {
       alert("مكان أو رقم الرشاش مطلوب");
       return;
@@ -90,6 +102,8 @@ export default function AddHeapPage() {
 
         farmId: form.farmId,
         farmName: selectedFarm?.name || "",
+
+        cropType: form.cropType,
 
         sprinklerName: form.sprinklerName.trim(),
         bricksCount: Number(form.bricksCount || 0),
@@ -130,6 +144,18 @@ export default function AddHeapPage() {
               {farms.map((farm) => (
                 <option key={farm.id} value={farm.id}>
                   {farm.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="form-input"
+              value={form.cropType}
+              onChange={(e) => setForm({ ...form, cropType: e.target.value })}
+            >
+              {cropTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
                 </option>
               ))}
             </select>
