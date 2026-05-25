@@ -35,11 +35,11 @@ import {
   faCubesStacked,
 } from "@fortawesome/free-solid-svg-icons";
 
+import { calculateAssetsStats } from "../lib/assetsStats";
 import {
   badgeClass,
   getAssetTypeName,
   getPlaceName,
-  getStatusCounts,
   isAssetWithoutValidType,
   normalizeList,
   getAssetCategoryLabel,
@@ -133,7 +133,7 @@ export default function Dashboard() {
     });
   }, []);
 
-  const stats = useMemo(() => getStatusCounts(assets), [assets]);
+  const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
   const validTypeIds = useMemo(() => types.map((type) => type.id), [types]);
 
