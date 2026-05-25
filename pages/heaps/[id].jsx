@@ -6,6 +6,7 @@ import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
+const cropTypes = ["برسيم", "رودس", "تبن"];
 export default function HeapDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
