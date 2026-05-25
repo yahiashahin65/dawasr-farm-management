@@ -105,7 +105,7 @@ export default function AssetTypes() {
   };
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute pageLoading={initialLoading}>
       <Layout title="أنواع المعدات">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
