@@ -13,7 +13,7 @@ import {
   getAssetCategoryLabel,
   getPlaceTypeLabel,
 } from "../lib/inventory";
-
+const cropTypes = ["برسيم", "رودس", "تبن"];
 function Section({ title, children }) {
   return (
     <div className="page-card p-5">
