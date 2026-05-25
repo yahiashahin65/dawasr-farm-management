@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../lib/firebase";
+import ProtectedRoute from "../../components/ProtectedRoute";
+import Layout from "../../components/Layout";
 
 export default function HeapDetailsPage() {
   const router = useRouter();
@@ -15,7 +18,7 @@ export default function HeapDetailsPage() {
 
     const fetchHeap = async () => {
       try {
-        const heapRef = doc(db, 'heaps', id);
+        const heapRef = doc(db, "heaps", id);
         const heapSnap = await getDoc(heapRef);
 
         if (heapSnap.exists()) {
@@ -26,7 +29,7 @@ export default function HeapDetailsPage() {
         }
       } catch (error) {
         console.error(error);
-        alert('حدث خطأ أثناء تحميل بيانات الكوم');
+        alert("حدث خطأ أثناء تحميل بيانات الكوم");
       } finally {
         setLoading(false);
       }
@@ -35,33 +38,81 @@ export default function HeapDetailsPage() {
     fetchHeap();
   }, [id]);
 
-  if (loading) {
-    return <div className="p-6">جاري تحميل البيانات...</div>;
-  }
-
-  if (!heap) {
-    return <div className="p-6">الكوم غير موجود</div>;
-  }
-
   return (
-    <div dir="rtl" className="p-6">
-      <h1 className="mb-6 text-2xl font-bold">تفاصيل الكوم</h1>
+    <ProtectedRoute>
+      <Layout title="تفاصيل الكوم">
+        {loading ? (
+          <div className="page-card p-5">جاري تحميل البيانات...</div>
+        ) : !heap ? (
+          <div className="page-card p-5">الكوم غير موجود</div>
+        ) : (
+          <div className="page-card max-w-5xl p-5 space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="text-2xl font-black text-slate-800">
+                تفاصيل الكوم
+              </h1>
 
-      {heap.imageUrl && (
-        <img
-          src={heap.imageUrl}
-          alt={heap.pileName}
-          className="mb-6 h-48 w-48 rounded object-cover"
-        />
-      )}
+              <Link
+                href={`/heaps/edit/${heap.id}`}
+                className="btn-primary"
+              >
+                تعديل الكوم
+              </Link>
+            </div>
 
-      <div className="space-y-3 rounded border bg-white p-5">
-        <p><strong>اسم الكوم:</strong> {heap.pileName}</p>
-        <p><strong>المزرعة:</strong> {heap.farmName}</p>
-        <p><strong>الرشاش:</strong> {heap.sprinklerName}</p>
-        <p><strong>عدد اللبن:</strong> {heap.bricksCount}</p>
-        <p><strong>ملاحظات:</strong> {heap.notes || 'لا يوجد'}</p>
-      </div>
-    </div>
+            {heap.imageUrl && (
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+                <img
+                  src={heap.imageUrl}
+                  alt={heap.pileName || "صورة الكوم"}
+                  className="max-h-80 w-full rounded-2xl object-contain"
+                />
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">اسم الكوم</p>
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {heap.pileName || "-"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">المزرعة</p>
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {heap.farmName || "-"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">الرشاش</p>
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {heap.sprinklerName || "-"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">عدد اللبن</p>
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {heap.bricksCount || 0}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-bold text-slate-500">ملاحظات</p>
+              <p className="mt-1 whitespace-pre-line text-slate-800">
+                {heap.notes || "لا يوجد"}
+              </p>
+            </div>
+
+            <Link href="/heaps" className="btn-secondary inline-block">
+              رجوع للأكوام
+            </Link>
+          </div>
+        )}
+      </Layout>
+    </ProtectedRoute>
   );
 }
