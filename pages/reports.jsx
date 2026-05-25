@@ -13,11 +13,11 @@ import {
   getAssetCategoryLabel,
   getPlaceTypeLabel,
 } from "../lib/inventory";
-const cropTypes = ["برسيم", "رودس", "تبن"];
+
 function Section({ title, children }) {
   return (
-    <div className="page-card p-5">
-      <h3 className="mb-4 font-black">{title}</h3>
+    <div className="page-card p-4">
+      <h3 className="mb-3 font-black">{title}</h3>
       {children}
     </div>
   );
@@ -112,10 +112,12 @@ export default function Reports() {
 
     const byFarmMap = {};
     const bySprinklerMap = {};
+    const byCropTypeMap = {};
 
     heaps.forEach((heap) => {
       const farmName = heap.farmName || "غير محدد";
       const sprinklerName = heap.sprinklerName || "غير محدد";
+      const cropType = heap.cropType || "غير محدد";
       const bricks = Number(heap.bricksCount || 0);
 
       if (!byFarmMap[farmName]) {
@@ -139,6 +141,17 @@ export default function Reports() {
 
       bySprinklerMap[sprinklerName].count += 1;
       bySprinklerMap[sprinklerName].bricks += bricks;
+
+      if (!byCropTypeMap[cropType]) {
+        byCropTypeMap[cropType] = {
+          label: cropType,
+          count: 0,
+          bricks: 0,
+        };
+      }
+
+      byCropTypeMap[cropType].count += 1;
+      byCropTypeMap[cropType].bricks += bricks;
     });
 
     return {
@@ -146,6 +159,9 @@ export default function Reports() {
       totalBricks,
       byFarm: Object.values(byFarmMap).sort((a, b) => b.bricks - a.bricks),
       bySprinkler: Object.values(bySprinklerMap).sort(
+        (a, b) => b.bricks - a.bricks
+      ),
+      byCropType: Object.values(byCropTypeMap).sort(
         (a, b) => b.bricks - a.bricks
       ),
       latest: [...heaps].slice(0, 5),
@@ -232,9 +248,9 @@ export default function Reports() {
   return (
     <ProtectedRoute>
       <Layout title="التقارير">
-        <div className="mb-5 grid gap-4 sm:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
           {rowsByStatus.map((row) => (
-            <Link key={row.label} href={row.href} className="page-card p-5">
+            <Link key={row.label} href={row.href} className="page-card p-4">
               <p className="text-sm font-bold text-slate-500">{row.label}</p>
               <h3 className="mt-2 text-4xl font-black text-slate-900">
                 {row.count}
@@ -246,8 +262,8 @@ export default function Reports() {
           ))}
         </div>
 
-        <div className="mb-5 grid gap-4 sm:grid-cols-2">
-          <Link href="/heaps" className="page-card p-5">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <Link href="/heaps" className="page-card p-4">
             <p className="text-sm font-bold text-slate-500">إجمالي الأكوام</p>
             <h3 className="mt-2 text-4xl font-black text-slate-900">
               {heapStats.totalHeaps}
@@ -257,7 +273,7 @@ export default function Reports() {
             </span>
           </Link>
 
-          <div className="page-card p-5">
+          <div className="page-card p-4">
             <p className="text-sm font-bold text-slate-500">
               إجمالي عدد اللبن
             </p>
@@ -270,7 +286,7 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-2">
           <Section title="حسب التصنيف">
             <RowList rows={rowsByCategory} />
           </Section>
@@ -295,6 +311,10 @@ export default function Reports() {
             <RowList rows={rowsByWorker} />
           </Section>
 
+          <Section title="الأكوام حسب النوع">
+            <HeapReportList rows={heapStats.byCropType} />
+          </Section>
+
           <Section title="الأكوام حسب المزرعة">
             <HeapReportList rows={heapStats.byFarm} />
           </Section>
@@ -304,13 +324,14 @@ export default function Reports() {
           </Section>
         </div>
 
-        <div className="page-card mt-5 overflow-x-auto">
-          <h3 className="p-5 pb-2 font-black">آخر الأكوام المضافة</h3>
+        <div className="page-card mt-4 overflow-x-auto">
+          <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
 
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
                 <th className="table-th">الكوم</th>
+                <th className="table-th">النوع</th>
                 <th className="table-th">المزرعة</th>
                 <th className="table-th">الرشاش</th>
                 <th className="table-th">عدد اللبن</th>
@@ -325,6 +346,7 @@ export default function Reports() {
                       {heap.pileName || "-"}
                     </Link>
                   </td>
+                  <td className="table-td">{heap.cropType || "-"}</td>
                   <td className="table-td">{heap.farmName || "-"}</td>
                   <td className="table-td">{heap.sprinklerName || "-"}</td>
                   <td className="table-td">{heap.bricksCount || 0}</td>
@@ -333,7 +355,7 @@ export default function Reports() {
 
               {heapStats.latest.length === 0 && (
                 <tr>
-                  <td className="table-td text-center" colSpan="4">
+                  <td className="table-td text-center" colSpan="5">
                     لا توجد أكوام
                   </td>
                 </tr>
@@ -342,8 +364,8 @@ export default function Reports() {
           </table>
         </div>
 
-        <div className="page-card mt-5 overflow-x-auto">
-          <h3 className="p-5 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
+        <div className="page-card mt-4 overflow-x-auto">
+          <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
 
           <table className="w-full">
             <thead className="bg-slate-50">
@@ -402,4 +424,4 @@ export default function Reports() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
