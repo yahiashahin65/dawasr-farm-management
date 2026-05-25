@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  limit,
+  startAfter,
+} from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -17,31 +24,62 @@ export default function WorkshopAssets() {
   const [search, setSearch] = useState("");
 
   const [initialLoading, setInitialLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [pageLoading, setPageLoading] = useState(false);
 
-  const loadWorkshopAssets = async () => {
-    let snap;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState({ 1: null });
+
+  const loadWorkshopAssetsPage = async (
+    pageNumber = 1,
+    cursor = null,
+    showLoader = true
+  ) => {
+    if (showLoader) setPageLoading(true);
 
     try {
-      snap = await getDocs(
-        query(collection(db, "assets"), orderBy("updatedAt", "desc"))
+      const constraints = [orderBy("updatedAt", "desc")];
+
+      if (cursor) {
+        constraints.push(startAfter(cursor));
+      }
+
+      constraints.push(limit(PAGE_SIZE + 1));
+
+      let snap;
+
+      try {
+        snap = await getDocs(query(collection(db, "assets"), ...constraints));
+      } catch {
+        snap = await getDocs(collection(db, "assets"));
+      }
+
+      const docs = snap.docs;
+      const allDocs = docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
+
+      const workshopDocs = allDocs.filter(
+        (asset) =>
+          asset.placeType === "external_workshop" ||
+          asset.status === "في الورشة"
       );
-    } catch {
-      snap = await getDocs(collection(db, "assets"));
+
+      const visibleDocs = workshopDocs.slice(0, PAGE_SIZE);
+
+      setAssets(visibleDocs);
+      setHasNextPage(docs.length > PAGE_SIZE);
+
+      setPageCursors((prev) => ({
+        ...prev,
+        [pageNumber + 1]: docs[Math.min(PAGE_SIZE - 1, docs.length - 1)] || null,
+      }));
+
+      setCurrentPage(pageNumber);
+    } finally {
+      if (showLoader) setPageLoading(false);
     }
-
-    const allAssets = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
-
-    const workshopOnly = allAssets.filter(
-      (asset) =>
-        asset.placeType === "external_workshop" ||
-        asset.status === "في الورشة"
-    );
-
-    setAssets(workshopOnly);
   };
 
   useEffect(() => {
@@ -49,7 +87,7 @@ export default function WorkshopAssets() {
       setInitialLoading(true);
 
       try {
-        await loadWorkshopAssets();
+        await loadWorkshopAssetsPage(1, null, false);
       } finally {
         setInitialLoading(false);
       }
@@ -59,8 +97,6 @@ export default function WorkshopAssets() {
   }, []);
 
   const workshopAssets = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-
     return assets.filter((asset) => {
       const text = `
         ${asset.name || ""}
@@ -68,24 +104,16 @@ export default function WorkshopAssets() {
         ${asset.externalWorkshopName || ""}
         ${asset.placeName || ""}
         ${asset.assetTypeName || ""}
-        ${asset.status || ""}
-        ${asset.workerNames || ""}
       `.toLowerCase();
 
-      return !keyword || text.includes(keyword);
+      return !search || text.includes(search.toLowerCase());
     });
   }, [assets, search]);
-
-  const totalPages = Math.ceil(workshopAssets.length / PAGE_SIZE) || 1;
-
-  const paginatedWorkshopAssets = useMemo(() => {
-    return workshopAssets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  }, [workshopAssets, page]);
 
   const workshopGroups = useMemo(() => {
     const groups = {};
 
-    paginatedWorkshopAssets.forEach((asset) => {
+    workshopAssets.forEach((asset) => {
       const name =
         asset.externalWorkshopName ||
         asset.placeName ||
@@ -103,11 +131,7 @@ export default function WorkshopAssets() {
       count: items.length,
       items,
     }));
-  }, [paginatedWorkshopAssets]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
+  }, [workshopAssets]);
 
   return (
     <ProtectedRoute pageLoading={initialLoading}>
@@ -123,16 +147,7 @@ export default function WorkshopAssets() {
           <div className="page-card p-5">
             <p className="text-sm font-bold text-slate-500">عدد الورش</p>
             <h3 className="mt-2 text-4xl font-black">
-              {
-                new Set(
-                  workshopAssets.map(
-                    (asset) =>
-                      asset.externalWorkshopName ||
-                      asset.placeName ||
-                      "ورشة خارجية غير محددة"
-                  )
-                ).size
-              }
+              {workshopGroups.length}
             </h3>
           </div>
 
@@ -140,16 +155,18 @@ export default function WorkshopAssets() {
             <p className="text-sm font-bold text-slate-500">فلترة</p>
             <input
               className="form-input mt-2"
-              placeholder="بحث باسم الأصل أو الورشة أو العامل"
+              placeholder="بحث باسم الأصل أو الورشة"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="mb-3 text-sm font-bold text-slate-500">
-          المعروض: {paginatedWorkshopAssets.length} من {workshopAssets.length}
-        </div>
+        {pageLoading && (
+          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
+            جاري تحميل البيانات...
+          </div>
+        )}
 
         <div className="grid gap-4">
           {workshopGroups.map((group) => (
@@ -221,20 +238,28 @@ export default function WorkshopAssets() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            disabled={page === 1}
-            onClick={() => setPage((prev) => prev - 1)}
+            disabled={currentPage === 1 || pageLoading}
+            onClick={() =>
+              loadWorkshopAssetsPage(
+                currentPage - 1,
+                pageCursors[currentPage - 1] || null
+              )
+            }
             className="btn-secondary disabled:opacity-50"
           >
             السابق
           </button>
 
-          <span className="font-bold text-slate-700">
-            صفحة {page} من {totalPages}
-          </span>
+          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
 
           <button
-            disabled={page === totalPages}
-            onClick={() => setPage((prev) => prev + 1)}
+            disabled={!hasNextPage || pageLoading}
+            onClick={() =>
+              loadWorkshopAssetsPage(
+                currentPage + 1,
+                pageCursors[currentPage + 1]
+              )
+            }
             className="btn-secondary disabled:opacity-50"
           >
             التالي
