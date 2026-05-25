@@ -6,6 +6,7 @@ import { fileToFirestoreImage } from "../../lib/imageToFirestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
+const cropTypes = ["برسيم", "رودس", "تبن"];
 export default function AddHeapPage() {
   const router = useRouter();
 
