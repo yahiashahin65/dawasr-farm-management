@@ -11,7 +11,7 @@ import { fileToFirestoreImage } from "../../lib/imageToFirestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
-const cropTypes = ["برسيم", "رودس", "تبن"];
+const cropTypes = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
 export default function AddHeapPage() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function AddHeapPage() {
   const [form, setForm] = useState({
     pileName: "",
     farmId: "",
-    cropType: "برسيم",
+    cropType: "غير معلوم",
     sprinklerName: "",
     bricksCount: "",
     notes: "",
@@ -76,18 +76,8 @@ export default function AddHeapPage() {
       return;
     }
 
-    if (!form.cropType) {
-      alert("نوع الكوم مطلوب");
-      return;
-    }
-
     if (!form.sprinklerName.trim()) {
       alert("مكان أو رقم الرشاش مطلوب");
-      return;
-    }
-
-    if (!form.bricksCount || Number(form.bricksCount) <= 0) {
-      alert("عدد اللبن مطلوب");
       return;
     }
 
@@ -103,10 +93,13 @@ export default function AddHeapPage() {
         farmId: form.farmId,
         farmName: selectedFarm?.name || "",
 
-        cropType: form.cropType,
+        cropType: form.cropType || "غير معلوم",
 
         sprinklerName: form.sprinklerName.trim(),
-        bricksCount: Number(form.bricksCount || 0),
+
+        bricksCount: form.bricksCount
+          ? Number(form.bricksCount)
+          : null,
 
         imageUrl,
         notes: form.notes.trim(),
@@ -172,7 +165,7 @@ export default function AddHeapPage() {
             <input
               className="form-input"
               type="number"
-              placeholder="عدد اللبن، مثال: 2000"
+              placeholder="عدد اللبن اختياري، مثال: 2000"
               value={form.bricksCount}
               onChange={(e) =>
                 setForm({ ...form, bricksCount: e.target.value })
