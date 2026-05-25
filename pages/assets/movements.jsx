@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  limit,
-  startAfter,
-} from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -32,11 +25,7 @@ export default function AssetMovements() {
   const [assets, setAssets] = useState([]);
 
   const [initialLoading, setInitialLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
-
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState({ 1: null });
 
   const [filters, setFilters] = useState({
     movementType: "",
@@ -58,53 +47,23 @@ export default function AssetMovements() {
     );
   };
 
-  const loadMovementsPage = async (
-    pageNumber = 1,
-    cursor = null,
-    showLoader = true
-  ) => {
-    if (showLoader) setPageLoading(true);
+  const loadMovements = async () => {
+    let snap;
 
     try {
-      const constraints = [orderBy("createdAt", "desc")];
-
-      if (cursor) {
-        constraints.push(startAfter(cursor));
-      }
-
-      constraints.push(limit(PAGE_SIZE + 1));
-
-      let snap;
-
-      try {
-        snap = await getDocs(
-          query(collection(db, "assetMovements"), ...constraints)
-        );
-      } catch {
-        snap = await getDocs(collection(db, "assetMovements"));
-      }
-
-      const docs = snap.docs;
-      const visibleDocs = docs.slice(0, PAGE_SIZE);
-
-      setMovements(
-        visibleDocs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }))
+      snap = await getDocs(
+        query(collection(db, "assetMovements"), orderBy("createdAt", "desc"))
       );
-
-      setHasNextPage(docs.length > PAGE_SIZE);
-
-      setPageCursors((prev) => ({
-        ...prev,
-        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
-      }));
-
-      setCurrentPage(pageNumber);
-    } finally {
-      if (showLoader) setPageLoading(false);
+    } catch {
+      snap = await getDocs(collection(db, "assetMovements"));
     }
+
+    setMovements(
+      snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }))
+    );
   };
 
   useEffect(() => {
@@ -112,10 +71,7 @@ export default function AssetMovements() {
       setInitialLoading(true);
 
       try {
-        await Promise.all([
-          loadAssets(),
-          loadMovementsPage(1, null, false),
-        ]);
+        await Promise.all([loadAssets(), loadMovements()]);
       } finally {
         setInitialLoading(false);
       }
@@ -135,16 +91,22 @@ export default function AssetMovements() {
   }, [assets]);
 
   const filtered = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
     return movements.filter((movement) => {
       const asset = assetMap[movement.assetId];
+
       const category = movement.category || asset?.category || "asset";
       const status = movement.status || asset?.status || "";
 
       const text = `
         ${movement.assetName || ""}
+        ${asset?.name || ""}
         ${movement.fromPlaceName || ""}
         ${movement.toPlaceName || ""}
         ${movement.reason || ""}
+        ${category || ""}
+        ${status || ""}
       `.toLowerCase();
 
       return (
@@ -153,10 +115,27 @@ export default function AssetMovements() {
         (!filters.status || status === filters.status) &&
         (!filters.placeType || movement.toPlaceType === filters.placeType) &&
         (!filters.category || category === filters.category) &&
-        (!search || text.includes(search.toLowerCase()))
+        (!keyword || text.includes(keyword))
       );
     });
   }, [movements, assetMap, filters, search]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+
+  const paginatedMovements = useMemo(() => {
+    return filtered.slice(
+      (currentPage - 1) * PAGE_SIZE,
+      currentPage * PAGE_SIZE
+    );
+  }, [filtered, currentPage]);
+
+  const updateFilter = (key, value) => {
+    setCurrentPage(1);
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
 
   return (
     <ProtectedRoute pageLoading={initialLoading}>
@@ -166,18 +145,16 @@ export default function AssetMovements() {
             className="form-input"
             placeholder="بحث باسم الأصل أو المكان أو السبب"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
           />
 
           <select
             className="form-input"
             value={filters.movementType}
-            onChange={(e) =>
-              setFilters((prev) => ({
-                ...prev,
-                movementType: e.target.value,
-              }))
-            }
+            onChange={(e) => updateFilter("movementType", e.target.value)}
           >
             <option value="">كل الحركات</option>
             <option value="created">تسجيل أول مكان</option>
@@ -189,9 +166,7 @@ export default function AssetMovements() {
           <select
             className="form-input"
             value={filters.status}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, status: e.target.value }))
-            }
+            onChange={(e) => updateFilter("status", e.target.value)}
           >
             <option value="">كل الحالات</option>
             <option value="صالح">صالح</option>
@@ -202,9 +177,7 @@ export default function AssetMovements() {
           <select
             className="form-input"
             value={filters.placeType}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, placeType: e.target.value }))
-            }
+            onChange={(e) => updateFilter("placeType", e.target.value)}
           >
             <option value="">كل الأماكن</option>
             <option value="farm">مزرعة</option>
@@ -215,9 +188,7 @@ export default function AssetMovements() {
           <select
             className="form-input"
             value={filters.category}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, category: e.target.value }))
-            }
+            onChange={(e) => updateFilter("category", e.target.value)}
           >
             <option value="">كل التصنيفات</option>
             <option value="asset">معدة</option>
@@ -227,14 +198,9 @@ export default function AssetMovements() {
           </select>
         </div>
 
-        {pageLoading && (
-          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
-            جاري تحميل البيانات...
-          </div>
-        )}
-
         <div className="mb-3 text-sm font-bold text-slate-500">
-          عدد الحركات في هذه الصفحة: {filtered.length}
+          المعروض: {paginatedMovements.length} من إجمالي النتائج{" "}
+          {filtered.length}
         </div>
 
         <div className="page-card overflow-x-auto">
@@ -255,7 +221,7 @@ export default function AssetMovements() {
             </thead>
 
             <tbody>
-              {filtered.map((movement) => {
+              {paginatedMovements.map((movement) => {
                 const asset = assetMap[movement.assetId];
                 const category = movement.category || asset?.category || "asset";
                 const status = movement.status || asset?.status || "-";
@@ -327,25 +293,20 @@ export default function AssetMovements() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            disabled={currentPage === 1 || pageLoading}
-            onClick={() =>
-              loadMovementsPage(
-                currentPage - 1,
-                pageCursors[currentPage - 1] || null
-              )
-            }
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((prev) => prev - 1)}
             className="btn-secondary disabled:opacity-50"
           >
             السابق
           </button>
 
-          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+          <span className="font-bold text-slate-700">
+            صفحة {currentPage} من {totalPages}
+          </span>
 
           <button
-            disabled={!hasNextPage || pageLoading}
-            onClick={() =>
-              loadMovementsPage(currentPage + 1, pageCursors[currentPage + 1])
-            }
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((prev) => prev + 1)}
             className="btn-secondary disabled:opacity-50"
           >
             التالي
