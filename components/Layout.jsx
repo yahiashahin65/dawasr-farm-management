@@ -29,6 +29,7 @@ const links = [
   { href: "/kubras", label: "الكِبر", icon: faWarehouse },
   { href: "/asset-types", label: "أنواع الأصول", icon: faLayerGroup },
   { href: "/workers", label: "العمال", icon: faUsers },
+  { href: "/heaps", label: "الأكوام", icon: faLayerGroup },
 ];
 
 export default function Layout({ children, title = "لوحة التحكم" }) {
