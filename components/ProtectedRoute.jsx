@@ -1,63 +1,52 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-
 import { auth, db } from "../lib/firebase";
 
 export default function ProtectedRoute({ children }) {
   const router = useRouter();
-
   const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(
-      auth,
-      async (user) => {
-        if (!user) {
-          router.replace("/login");
-          return;
-        }
-
-        try {
-          const userRef = doc(
-            db,
-            "users",
-            user.uid
-          );
-
-          const userSnap = await getDoc(
-            userRef
-          );
-
-          if (!userSnap.exists()) {
-            router.replace("/login");
-            return;
-          }
-
-          const role =
-            userSnap.data()?.role || "viewer";
-
-          if (
-            role !== "admin" &&
-            role !== "viewer"
-          ) {
-            router.replace("/login");
-            return;
-          }
-        } catch (error) {
-          console.error(error);
-          router.replace("/login");
-          return;
-        } finally {
-          setChecking(false);
-        }
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setAllowed(false);
+        setChecking(false);
+        router.replace("/login");
+        return;
       }
-    );
+
+      try {
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+
+        if (!userSnap.exists()) {
+          setAllowed(false);
+          router.replace("/login");
+          return;
+        }
+
+        const role = userSnap.data()?.role || "viewer";
+
+        if (role !== "admin" && role !== "viewer") {
+          setAllowed(false);
+          router.replace("/login");
+          return;
+        }
+
+        setAllowed(true);
+      } catch (error) {
+        console.error(error);
+        setAllowed(false);
+        router.replace("/login");
+      } finally {
+        setChecking(false);
+      }
+    });
 
     return () => unsub();
-  }, [router]);
+  }, []);
 
   if (checking) {
     return (
@@ -69,6 +58,8 @@ export default function ProtectedRoute({ children }) {
       </div>
     );
   }
+
+  if (!allowed) return null;
 
   return children;
 }
