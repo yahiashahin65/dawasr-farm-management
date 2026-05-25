@@ -163,13 +163,13 @@ export default function HeapsPage() {
 
                     <td className="table-td">
                       <span className="badge bg-green-50 text-green-700">
-                        {item.cropType || "-"}
+                        {item.cropType || "غير معلوم"}
                       </span>
                     </td>
 
                     <td className="table-td">{item.farmName || "-"}</td>
                     <td className="table-td">{item.sprinklerName || "-"}</td>
-                    <td className="table-td">{item.bricksCount || 0}</td>
+                    <td className="table-td">{item.bricksCount || "غير محدد"}</td>
 
                     <td className="table-td">
                       <div className="flex gap-2">
