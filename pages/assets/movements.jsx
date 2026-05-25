@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  limit,
+  startAfter,
+} from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
-import { badgeClass, getAssetCategoryLabel, getPlaceTypeLabel } from "../../lib/inventory";
+import {
+  badgeClass,
+  getAssetCategoryLabel,
+  getPlaceTypeLabel,
+} from "../../lib/inventory";
+
+const PAGE_SIZE = 10;
 
 const movementTypeLabel = (type) => {
   if (type === "created") return "تسجيل أول مكان";
@@ -17,31 +30,107 @@ const movementTypeLabel = (type) => {
 export default function AssetMovements() {
   const [movements, setMovements] = useState([]);
   const [assets, setAssets] = useState([]);
+
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [pageCursors, setPageCursors] = useState({ 1: null });
+
   const [filters, setFilters] = useState({
     movementType: "",
     status: "",
     placeType: "",
     category: "",
   });
+
   const [search, setSearch] = useState("");
 
+  const loadAssets = async () => {
+    const snap = await getDocs(collection(db, "assets"));
+
+    setAssets(
+      snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }))
+    );
+  };
+
+  const loadMovementsPage = async (
+    pageNumber = 1,
+    cursor = null,
+    showLoader = true
+  ) => {
+    if (showLoader) setPageLoading(true);
+
+    try {
+      const constraints = [orderBy("createdAt", "desc")];
+
+      if (cursor) {
+        constraints.push(startAfter(cursor));
+      }
+
+      constraints.push(limit(PAGE_SIZE + 1));
+
+      let snap;
+
+      try {
+        snap = await getDocs(
+          query(collection(db, "assetMovements"), ...constraints)
+        );
+      } catch {
+        snap = await getDocs(collection(db, "assetMovements"));
+      }
+
+      const docs = snap.docs;
+      const visibleDocs = docs.slice(0, PAGE_SIZE);
+
+      setMovements(
+        visibleDocs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+      );
+
+      setHasNextPage(docs.length > PAGE_SIZE);
+
+      setPageCursors((prev) => ({
+        ...prev,
+        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
+      }));
+
+      setCurrentPage(pageNumber);
+    } finally {
+      if (showLoader) setPageLoading(false);
+    }
+  };
+
   useEffect(() => {
-    Promise.all([
-      getDocs(query(collection(db, "assetMovements"), orderBy("createdAt", "desc"))).catch(() =>
-        getDocs(collection(db, "assetMovements"))
-      ),
-      getDocs(collection(db, "assets")),
-    ]).then(([m, a]) => {
-      setMovements(m.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      try {
+        await Promise.all([
+          loadAssets(),
+          loadMovementsPage(1, null, false),
+        ]);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   const assetMap = useMemo(() => {
     const map = {};
+
     assets.forEach((asset) => {
       map[asset.id] = asset;
     });
+
     return map;
   }, [assets]);
 
@@ -50,22 +139,27 @@ export default function AssetMovements() {
       const asset = assetMap[movement.assetId];
       const category = movement.category || asset?.category || "asset";
       const status = movement.status || asset?.status || "";
-      const text = `${movement.assetName || ""} ${movement.fromPlaceName || ""} ${
-        movement.toPlaceName || ""
-      } ${movement.reason || ""}`;
+
+      const text = `
+        ${movement.assetName || ""}
+        ${movement.fromPlaceName || ""}
+        ${movement.toPlaceName || ""}
+        ${movement.reason || ""}
+      `.toLowerCase();
 
       return (
-        (!filters.movementType || movement.movementType === filters.movementType) &&
+        (!filters.movementType ||
+          movement.movementType === filters.movementType) &&
         (!filters.status || status === filters.status) &&
         (!filters.placeType || movement.toPlaceType === filters.placeType) &&
         (!filters.category || category === filters.category) &&
-        (!search || text.toLowerCase().includes(search.toLowerCase()))
+        (!search || text.includes(search.toLowerCase()))
       );
     });
   }, [movements, assetMap, filters, search]);
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute pageLoading={initialLoading}>
       <Layout title="سجل الحركات">
         <div className="page-card mb-4 grid gap-3 p-3 lg:grid-cols-5">
           <input
@@ -79,7 +173,10 @@ export default function AssetMovements() {
             className="form-input"
             value={filters.movementType}
             onChange={(e) =>
-              setFilters((prev) => ({ ...prev, movementType: e.target.value }))
+              setFilters((prev) => ({
+                ...prev,
+                movementType: e.target.value,
+              }))
             }
           >
             <option value="">كل الحركات</option>
@@ -130,8 +227,14 @@ export default function AssetMovements() {
           </select>
         </div>
 
+        {pageLoading && (
+          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
+            جاري تحميل البيانات...
+          </div>
+        )}
+
         <div className="mb-3 text-sm font-bold text-slate-500">
-          عدد الحركات: {filtered.length} من {movements.length}
+          عدد الحركات في هذه الصفحة: {filtered.length}
         </div>
 
         <div className="page-card overflow-x-auto">
@@ -175,10 +278,14 @@ export default function AssetMovements() {
 
                     <td className="table-td">{movement.fromPlaceName || "-"}</td>
                     <td className="table-td">{movement.toPlaceName || "-"}</td>
-                    <td className="table-td">{getPlaceTypeLabel(movement.toPlaceType)}</td>
+                    <td className="table-td">
+                      {getPlaceTypeLabel(movement.toPlaceType)}
+                    </td>
 
                     <td className="table-td">
-                      <span className={`badge ${badgeClass(status)}`}>{status}</span>
+                      <span className={`badge ${badgeClass(status)}`}>
+                        {status}
+                      </span>
                     </td>
 
                     <td className="table-td">{movement.reason || "-"}</td>
@@ -193,7 +300,10 @@ export default function AssetMovements() {
 
                     <td className="table-td">
                       {movement.assetId ? (
-                        <Link href={`/assets/${movement.assetId}`} className="btn-secondary !py-2">
+                        <Link
+                          href={`/assets/${movement.assetId}`}
+                          className="btn-secondary !py-2"
+                        >
                           الأصل
                         </Link>
                       ) : (
@@ -213,6 +323,33 @@ export default function AssetMovements() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button
+            disabled={currentPage === 1 || pageLoading}
+            onClick={() =>
+              loadMovementsPage(
+                currentPage - 1,
+                pageCursors[currentPage - 1] || null
+              )
+            }
+            className="btn-secondary disabled:opacity-50"
+          >
+            السابق
+          </button>
+
+          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+
+          <button
+            disabled={!hasNextPage || pageLoading}
+            onClick={() =>
+              loadMovementsPage(currentPage + 1, pageCursors[currentPage + 1])
+            }
+            className="btn-secondary disabled:opacity-50"
+          >
+            التالي
+          </button>
         </div>
       </Layout>
     </ProtectedRoute>
