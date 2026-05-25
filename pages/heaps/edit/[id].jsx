@@ -14,6 +14,7 @@ import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 
 const cropTypes = ["برسيم", "رودس", "تبن"];
+
 export default function EditHeapPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -26,6 +27,7 @@ export default function EditHeapPage() {
     pileName: "",
     farmId: "",
     farmName: "",
+    cropType: "برسيم",
     sprinklerName: "",
     bricksCount: "",
     imageUrl: "",
@@ -64,6 +66,7 @@ export default function EditHeapPage() {
             pileName: data.pileName || "",
             farmId: data.farmId || "",
             farmName: data.farmName || "",
+            cropType: data.cropType || "برسيم",
             sprinklerName: data.sprinklerName || "",
             bricksCount: data.bricksCount || "",
             imageUrl: data.imageUrl || "",
@@ -116,6 +119,11 @@ export default function EditHeapPage() {
       return;
     }
 
+    if (!form.cropType) {
+      alert("نوع الكوم مطلوب");
+      return;
+    }
+
     if (!form.sprinklerName.trim()) {
       alert("مكان أو رقم الرشاش مطلوب");
       return;
@@ -140,6 +148,8 @@ export default function EditHeapPage() {
         farmId: form.farmId,
         farmName: selectedFarm?.name || form.farmName || "",
 
+        cropType: form.cropType,
+
         sprinklerName: form.sprinklerName.trim(),
         bricksCount: Number(form.bricksCount || 0),
 
@@ -163,7 +173,10 @@ export default function EditHeapPage() {
         {loading ? (
           <div className="page-card p-5">جاري تحميل البيانات...</div>
         ) : (
-          <form onSubmit={handleSubmit} className="page-card max-w-5xl p-5 space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="page-card max-w-5xl p-5 space-y-4"
+          >
             <div className="grid gap-4 md:grid-cols-2">
               <input
                 className="form-input"
@@ -185,6 +198,20 @@ export default function EditHeapPage() {
                 {farms.map((farm) => (
                   <option key={farm.id} value={farm.id}>
                     {farm.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="form-input"
+                value={form.cropType}
+                onChange={(e) =>
+                  setForm({ ...form, cropType: e.target.value })
+                }
+              >
+                {cropTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
                   </option>
                 ))}
               </select>
