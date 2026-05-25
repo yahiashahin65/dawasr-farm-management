@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
+const cropTypes = ["برسيم", "رودس", "تبن"];
 export default function HeapsPage() {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
