@@ -4,11 +4,11 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
+import { calculateAssetsStats } from "../lib/assetsStats";
 import {
   badgeClass,
   getAssetTypeName,
   getPlaceName,
-  getStatusCounts,
   normalizeList,
   getAssetCategoryLabel,
   getPlaceTypeLabel,
@@ -100,7 +100,7 @@ export default function Reports() {
     });
   }, []);
 
-  const stats = useMemo(() => getStatusCounts(assets), [assets]);
+  const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
   const heapStats = useMemo(() => {
     const totalHeaps = heaps.length;
@@ -121,13 +121,8 @@ export default function Reports() {
       const bricks = Number(heap.bricksCount || 0);
 
       if (!byFarmMap[farmName]) {
-        byFarmMap[farmName] = {
-          label: farmName,
-          count: 0,
-          bricks: 0,
-        };
+        byFarmMap[farmName] = { label: farmName, count: 0, bricks: 0 };
       }
-
       byFarmMap[farmName].count += 1;
       byFarmMap[farmName].bricks += bricks;
 
@@ -138,18 +133,12 @@ export default function Reports() {
           bricks: 0,
         };
       }
-
       bySprinklerMap[sprinklerName].count += 1;
       bySprinklerMap[sprinklerName].bricks += bricks;
 
       if (!byCropTypeMap[cropType]) {
-        byCropTypeMap[cropType] = {
-          label: cropType,
-          count: 0,
-          bricks: 0,
-        };
+        byCropTypeMap[cropType] = { label: cropType, count: 0, bricks: 0 };
       }
-
       byCropTypeMap[cropType].count += 1;
       byCropTypeMap[cropType].bricks += bricks;
     });
@@ -190,16 +179,8 @@ export default function Reports() {
   ];
 
   const rowsByPlaceType = [
-    {
-      label: "داخل المزارع",
-      count: stats.inFarms,
-      href: "/assets?placeType=farm",
-    },
-    {
-      label: "داخل الكِبر",
-      count: stats.inKubras,
-      href: "/assets?placeType=kubra",
-    },
+    { label: "داخل المزارع", count: stats.inFarms, href: "/assets?placeType=farm" },
+    { label: "داخل الكِبر", count: stats.inKubras, href: "/assets?placeType=kubra" },
     {
       label: "ورش خارجية",
       count: stats.inExternalWorkshops,
@@ -274,9 +255,7 @@ export default function Reports() {
           </Link>
 
           <div className="page-card p-4">
-            <p className="text-sm font-bold text-slate-500">
-              إجمالي عدد اللبن
-            </p>
+            <p className="text-sm font-bold text-slate-500">إجمالي عدد اللبن</p>
             <h3 className="mt-2 text-4xl font-black text-slate-900">
               {heapStats.totalBricks}
             </h3>
@@ -287,46 +266,19 @@ export default function Reports() {
         </div>
 
         <div className="grid gap-3 xl:grid-cols-2">
-          <Section title="حسب التصنيف">
-            <RowList rows={rowsByCategory} />
-          </Section>
-
-          <Section title="حسب نوع الأصل">
-            <RowList rows={rowsByType} />
-          </Section>
-
-          <Section title="حسب نوع المكان">
-            <RowList rows={rowsByPlaceType} />
-          </Section>
-
-          <Section title="حسب المزرعة">
-            <RowList rows={rowsByFarm} />
-          </Section>
-
-          <Section title="حسب الكِبرة">
-            <RowList rows={rowsByKubra} />
-          </Section>
-
-          <Section title="حسب العامل">
-            <RowList rows={rowsByWorker} />
-          </Section>
-
-          <Section title="الأكوام حسب النوع">
-            <HeapReportList rows={heapStats.byCropType} />
-          </Section>
-
-          <Section title="الأكوام حسب المزرعة">
-            <HeapReportList rows={heapStats.byFarm} />
-          </Section>
-
-          <Section title="الأكوام حسب الرشاش">
-            <HeapReportList rows={heapStats.bySprinkler} />
-          </Section>
+          <Section title="حسب التصنيف"><RowList rows={rowsByCategory} /></Section>
+          <Section title="حسب نوع الأصل"><RowList rows={rowsByType} /></Section>
+          <Section title="حسب نوع المكان"><RowList rows={rowsByPlaceType} /></Section>
+          <Section title="حسب المزرعة"><RowList rows={rowsByFarm} /></Section>
+          <Section title="حسب الكِبرة"><RowList rows={rowsByKubra} /></Section>
+          <Section title="حسب العامل"><RowList rows={rowsByWorker} /></Section>
+          <Section title="الأكوام حسب النوع"><HeapReportList rows={heapStats.byCropType} /></Section>
+          <Section title="الأكوام حسب المزرعة"><HeapReportList rows={heapStats.byFarm} /></Section>
+          <Section title="الأكوام حسب الرشاش"><HeapReportList rows={heapStats.bySprinkler} /></Section>
         </div>
 
         <div className="page-card mt-4 overflow-x-auto">
           <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
-
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -337,14 +289,11 @@ export default function Reports() {
                 <th className="table-th">عدد اللبن</th>
               </tr>
             </thead>
-
             <tbody>
               {heapStats.latest.map((heap) => (
                 <tr key={heap.id} className="border-t border-slate-100">
                   <td className="table-td font-bold">
-                    <Link href={`/heaps/${heap.id}`}>
-                      {heap.pileName || "-"}
-                    </Link>
+                    <Link href={`/heaps/${heap.id}`}>{heap.pileName || "-"}</Link>
                   </td>
                   <td className="table-td">{heap.cropType || "-"}</td>
                   <td className="table-td">{heap.farmName || "-"}</td>
@@ -366,7 +315,6 @@ export default function Reports() {
 
         <div className="page-card mt-4 overflow-x-auto">
           <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
-
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -378,28 +326,20 @@ export default function Reports() {
                 <th className="table-th">الحالة</th>
               </tr>
             </thead>
-
             <tbody>
               {assets.map((asset) => (
                 <tr key={asset.id} className="border-t border-slate-100">
                   <td className="table-td font-bold">
                     <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
                   </td>
-
                   <td className="table-td">
                     <span className="badge bg-purple-50 text-purple-700">
                       {getAssetCategoryLabel(asset.category)}
                     </span>
                   </td>
-
                   <td className="table-td">{getAssetTypeName(asset)}</td>
-
                   <td className="table-td">{getPlaceName(asset)}</td>
-
-                  <td className="table-td">
-                    {getPlaceTypeLabel(asset.placeType)}
-                  </td>
-
+                  <td className="table-td">{getPlaceTypeLabel(asset.placeType)}</td>
                   <td className="table-td">
                     <Link
                       href={`/assets?status=${asset.status}`}
@@ -424,4 +364,4 @@ export default function Reports() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+}
