@@ -4,19 +4,19 @@ import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTractor } from "@fortawesome/free-solid-svg-icons";
 
-export default function ProtectedRoute({ children }) {
+export default function ProtectedRoute({ children, pageLoading = false }) {
   const router = useRouter();
   const { user, role, loading } = useAuth();
 
   const allowed = !!user && (role === "admin" || role === "viewer");
 
   useEffect(() => {
-    if (!loading && !allowed) {
+    if (!loading && !pageLoading && !allowed) {
       router.replace("/login");
     }
-  }, [loading, allowed, router]);
+  }, [loading, pageLoading, allowed, router]);
 
-  if (loading) {
+  if (loading || pageLoading) {
     return (
       <div
         dir="rtl"
@@ -127,7 +127,7 @@ export default function ProtectedRoute({ children }) {
           </p>
 
           <p className="mt-1 text-sm font-bold text-slate-500">
-            يتم التحقق من تسجيل الدخول
+            يتم تحميل البيانات والتحقق من تسجيل الدخول
           </p>
         </div>
       </div>
