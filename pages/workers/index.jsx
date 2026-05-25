@@ -7,8 +7,6 @@ import {
   getDocs,
   orderBy,
   query,
-  limit,
-  startAfter,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
@@ -32,53 +30,19 @@ export default function Workers() {
   const [search, setSearch] = useState("");
 
   const [initialLoading, setInitialLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
-
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState({ 1: null });
 
-  const loadWorkersPage = async (
-    pageNumber = 1,
-    cursor = null,
-    showLoader = true
-  ) => {
-    if (showLoader) setPageLoading(true);
+  const loadWorkers = async () => {
+    const snap = await getDocs(
+      query(collection(db, "workers"), orderBy("createdAt", "desc"))
+    );
 
-    try {
-      const constraints = [orderBy("createdAt", "desc")];
-
-      if (cursor) {
-        constraints.push(startAfter(cursor));
-      }
-
-      constraints.push(limit(PAGE_SIZE + 1));
-
-      const snap = await getDocs(
-        query(collection(db, "workers"), ...constraints)
-      );
-
-      const docs = snap.docs;
-      const visibleDocs = docs.slice(0, PAGE_SIZE);
-
-      setItems(
-        visibleDocs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }))
-      );
-
-      setHasNextPage(docs.length > PAGE_SIZE);
-
-      setPageCursors((prev) => ({
-        ...prev,
-        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
-      }));
-
-      setCurrentPage(pageNumber);
-    } finally {
-      if (showLoader) setPageLoading(false);
-    }
+    setItems(
+      snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }))
+    );
   };
 
   useEffect(() => {
@@ -86,7 +50,7 @@ export default function Workers() {
       setInitialLoading(true);
 
       try {
-        await loadWorkersPage(1, null, false);
+        await loadWorkers();
       } finally {
         setInitialLoading(false);
       }
@@ -111,13 +75,26 @@ export default function Workers() {
     });
   }, [items, search]);
 
+  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  const paginatedItems = useMemo(() => {
+    return filteredItems.slice(
+      (currentPage - 1) * PAGE_SIZE,
+      currentPage * PAGE_SIZE
+    );
+  }, [filteredItems, currentPage]);
+
   const remove = async (id) => {
     if (!canManage) return;
 
     if (confirm("هل تريد حذف العامل؟")) {
       await deleteDoc(doc(db, "workers", id));
 
-      await loadWorkersPage(currentPage, pageCursors[currentPage] || null);
+      await loadWorkers();
+
+      if (paginatedItems.length === 1 && currentPage > 1) {
+        setCurrentPage((prev) => prev - 1);
+      }
     }
   };
 
@@ -135,7 +112,10 @@ export default function Workers() {
               className="w-full bg-transparent p-2 outline-none"
               placeholder="بحث باسم العامل أو الجوال أو الجنسية..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -146,14 +126,9 @@ export default function Workers() {
           )}
         </div>
 
-        {pageLoading && (
-          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
-            جاري تحميل البيانات...
-          </div>
-        )}
-
         <div className="mb-3 text-sm font-bold text-slate-500">
-          المعروض في هذه الصفحة: {filteredItems.length}
+          المعروض في هذه الصفحة: {paginatedItems.length} من إجمالي النتائج{" "}
+          {filteredItems.length}
         </div>
 
         <div className="page-card overflow-x-auto">
@@ -168,7 +143,7 @@ export default function Workers() {
             </thead>
 
             <tbody>
-              {filteredItems.map((worker) => (
+              {paginatedItems.map((worker) => (
                 <tr key={worker.id} className="border-t">
                   <td className="table-td font-bold">{worker.name}</td>
                   <td className="table-td">{worker.phone || "-"}</td>
@@ -218,25 +193,20 @@ export default function Workers() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            disabled={currentPage === 1 || pageLoading}
-            onClick={() =>
-              loadWorkersPage(
-                currentPage - 1,
-                pageCursors[currentPage - 1] || null
-              )
-            }
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((prev) => prev - 1)}
             className="btn-secondary disabled:opacity-50"
           >
             السابق
           </button>
 
-          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+          <span className="font-bold text-slate-700">
+            صفحة {currentPage} من {totalPages}
+          </span>
 
           <button
-            disabled={!hasNextPage || pageLoading}
-            onClick={() =>
-              loadWorkersPage(currentPage + 1, pageCursors[currentPage + 1])
-            }
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((prev) => prev + 1)}
             className="btn-secondary disabled:opacity-50"
           >
             التالي
