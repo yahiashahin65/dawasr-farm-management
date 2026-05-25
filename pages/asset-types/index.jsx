@@ -31,7 +31,9 @@ export default function AssetTypes() {
   const [items, setItems] = useState([]);
   const [assets, setAssets] = useState([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -42,8 +44,12 @@ export default function AssetTypes() {
     setAssets(assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
   };
 
-  const loadTypesPage = async (pageNumber = 1, cursor = null) => {
-    setLoading(true);
+  const loadTypesPage = async (
+    pageNumber = 1,
+    cursor = null,
+    showLoader = true
+  ) => {
+    if (showLoader) setPageLoading(true);
 
     try {
       const constraints = [orderBy("createdAt", "desc")];
@@ -71,13 +77,25 @@ export default function AssetTypes() {
 
       setCurrentPage(pageNumber);
     } finally {
-      setLoading(false);
+      if (showLoader) setPageLoading(false);
     }
   };
 
   useEffect(() => {
-    loadAssets();
-    loadTypesPage(1, null);
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      try {
+        await Promise.all([
+          loadAssets(),
+          loadTypesPage(1, null, false),
+        ]);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   const count = (type) =>
@@ -99,8 +117,10 @@ export default function AssetTypes() {
 
     if (confirm("هل تريد حذف نوع المعدة؟")) {
       await deleteDoc(doc(db, "assetTypes", id));
-      await loadTypesPage(currentPage, pageCursors[currentPage] || null);
-      await loadAssets();
+      await Promise.all([
+        loadTypesPage(currentPage, pageCursors[currentPage] || null),
+        loadAssets(),
+      ]);
     }
   };
 
@@ -133,7 +153,7 @@ export default function AssetTypes() {
           />
         </div>
 
-        {loading && (
+        {pageLoading && (
           <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
             جاري تحميل البيانات...
           </div>
@@ -208,9 +228,12 @@ export default function AssetTypes() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            disabled={currentPage === 1 || loading}
+            disabled={currentPage === 1 || pageLoading}
             onClick={() =>
-              loadTypesPage(currentPage - 1, pageCursors[currentPage - 1] || null)
+              loadTypesPage(
+                currentPage - 1,
+                pageCursors[currentPage - 1] || null
+              )
             }
             className="btn-secondary disabled:opacity-50"
           >
@@ -220,7 +243,7 @@ export default function AssetTypes() {
           <span className="font-bold text-slate-700">صفحة {currentPage}</span>
 
           <button
-            disabled={!hasNextPage || loading}
+            disabled={!hasNextPage || pageLoading}
             onClick={() =>
               loadTypesPage(currentPage + 1, pageCursors[currentPage + 1])
             }
