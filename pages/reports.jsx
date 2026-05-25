@@ -81,23 +81,34 @@ export default function Reports() {
   const [kubras, setKubras] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [heaps, setHeaps] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      getDocs(collection(db, "assets")),
-      getDocs(collection(db, "assetTypes")),
-      getDocs(collection(db, "farms")),
-      getDocs(collection(db, "kubras")),
-      getDocs(collection(db, "workers")),
-      getDocs(collection(db, "heaps")),
-    ]).then(([a, t, f, k, w, h]) => {
-      setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setTypes(normalizeList(t.docs));
-      setFarms(normalizeList(f.docs));
-      setKubras(normalizeList(k.docs));
-      setWorkers(normalizeList(w.docs));
-      setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      try {
+        const [a, t, f, k, w, h] = await Promise.all([
+          getDocs(collection(db, "assets")),
+          getDocs(collection(db, "assetTypes")),
+          getDocs(collection(db, "farms")),
+          getDocs(collection(db, "kubras")),
+          getDocs(collection(db, "workers")),
+          getDocs(collection(db, "heaps")),
+        ]);
+
+        setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setTypes(normalizeList(t.docs));
+        setFarms(normalizeList(f.docs));
+        setKubras(normalizeList(k.docs));
+        setWorkers(normalizeList(w.docs));
+        setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
@@ -179,8 +190,16 @@ export default function Reports() {
   ];
 
   const rowsByPlaceType = [
-    { label: "داخل المزارع", count: stats.inFarms, href: "/assets?placeType=farm" },
-    { label: "داخل الكِبر", count: stats.inKubras, href: "/assets?placeType=kubra" },
+    {
+      label: "داخل المزارع",
+      count: stats.inFarms,
+      href: "/assets?placeType=farm",
+    },
+    {
+      label: "داخل الكِبر",
+      count: stats.inKubras,
+      href: "/assets?placeType=kubra",
+    },
     {
       label: "ورش خارجية",
       count: stats.inExternalWorkshops,
@@ -227,7 +246,7 @@ export default function Reports() {
     .sort((a, b) => b.count - a.count);
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute pageLoading={initialLoading}>
       <Layout title="التقارير">
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
           {rowsByStatus.map((row) => (
@@ -266,19 +285,46 @@ export default function Reports() {
         </div>
 
         <div className="grid gap-3 xl:grid-cols-2">
-          <Section title="حسب التصنيف"><RowList rows={rowsByCategory} /></Section>
-          <Section title="حسب نوع الأصل"><RowList rows={rowsByType} /></Section>
-          <Section title="حسب نوع المكان"><RowList rows={rowsByPlaceType} /></Section>
-          <Section title="حسب المزرعة"><RowList rows={rowsByFarm} /></Section>
-          <Section title="حسب الكِبرة"><RowList rows={rowsByKubra} /></Section>
-          <Section title="حسب العامل"><RowList rows={rowsByWorker} /></Section>
-          <Section title="الأكوام حسب النوع"><HeapReportList rows={heapStats.byCropType} /></Section>
-          <Section title="الأكوام حسب المزرعة"><HeapReportList rows={heapStats.byFarm} /></Section>
-          <Section title="الأكوام حسب الرشاش"><HeapReportList rows={heapStats.bySprinkler} /></Section>
+          <Section title="حسب التصنيف">
+            <RowList rows={rowsByCategory} />
+          </Section>
+
+          <Section title="حسب نوع الأصل">
+            <RowList rows={rowsByType} />
+          </Section>
+
+          <Section title="حسب نوع المكان">
+            <RowList rows={rowsByPlaceType} />
+          </Section>
+
+          <Section title="حسب المزرعة">
+            <RowList rows={rowsByFarm} />
+          </Section>
+
+          <Section title="حسب الكِبرة">
+            <RowList rows={rowsByKubra} />
+          </Section>
+
+          <Section title="حسب العامل">
+            <RowList rows={rowsByWorker} />
+          </Section>
+
+          <Section title="الأكوام حسب النوع">
+            <HeapReportList rows={heapStats.byCropType} />
+          </Section>
+
+          <Section title="الأكوام حسب المزرعة">
+            <HeapReportList rows={heapStats.byFarm} />
+          </Section>
+
+          <Section title="الأكوام حسب الرشاش">
+            <HeapReportList rows={heapStats.bySprinkler} />
+          </Section>
         </div>
 
         <div className="page-card mt-4 overflow-x-auto">
           <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
+
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -289,11 +335,14 @@ export default function Reports() {
                 <th className="table-th">عدد اللبن</th>
               </tr>
             </thead>
+
             <tbody>
               {heapStats.latest.map((heap) => (
                 <tr key={heap.id} className="border-t border-slate-100">
                   <td className="table-td font-bold">
-                    <Link href={`/heaps/${heap.id}`}>{heap.pileName || "-"}</Link>
+                    <Link href={`/heaps/${heap.id}`}>
+                      {heap.pileName || "-"}
+                    </Link>
                   </td>
                   <td className="table-td">{heap.cropType || "-"}</td>
                   <td className="table-td">{heap.farmName || "-"}</td>
@@ -315,6 +364,7 @@ export default function Reports() {
 
         <div className="page-card mt-4 overflow-x-auto">
           <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
+
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -326,6 +376,7 @@ export default function Reports() {
                 <th className="table-th">الحالة</th>
               </tr>
             </thead>
+
             <tbody>
               {assets.map((asset) => (
                 <tr key={asset.id} className="border-t border-slate-100">
