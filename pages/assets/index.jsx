@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { calculateAssetsStats } from "../../lib/assetsStats";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -52,7 +53,9 @@ export default function Assets() {
   const [kubras, setKubras] = useState([]);
   const [workers, setWorkers] = useState([]);
 
-  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [pageCursors, setPageCursors] = useState({ 1: null });
@@ -85,25 +88,6 @@ export default function Assets() {
   const [preview, setPreview] = useState(null);
   const [view, setView] = useState("table");
 
-  const calculateStats = (assets) => ({
-    total: assets.length,
-
-    good: assets.filter((a) => a.status === "صالح").length,
-    broken: assets.filter((a) => a.status === "عاطل").length,
-    inWorkshop: assets.filter((a) => a.status === "في الورشة").length,
-
-    equipment: assets.filter((a) => (a.category || "asset") === "asset").length,
-    spareParts: assets.filter((a) => a.category === "spare_part").length,
-    tools: assets.filter((a) => a.category === "tool").length,
-    materials: assets.filter((a) => a.category === "material").length,
-
-    inFarms: assets.filter((a) => a.placeType === "farm").length,
-    inKubras: assets.filter((a) => a.placeType === "kubra").length,
-    inExternalWorkshops: assets.filter(
-      (a) => a.placeType === "external_workshop"
-    ).length,
-  });
-
   const loadStats = async () => {
     const snap = await getDocs(collection(db, "assets"));
 
@@ -112,7 +96,7 @@ export default function Assets() {
       ...d.data(),
     }));
 
-    setStats(calculateStats(allAssets));
+    setStats(calculateAssetsStats(allAssets));
   };
 
   const loadMetaData = async () => {
@@ -129,8 +113,12 @@ export default function Assets() {
     setWorkers(normalizeList(w.docs));
   };
 
-  const loadAssetsPage = async (pageNumber = 1, cursor = null) => {
-    setLoading(true);
+  const loadAssetsPage = async (
+    pageNumber = 1,
+    cursor = null,
+    showLoader = true
+  ) => {
+    if (showLoader) setPageLoading(true);
 
     try {
       const constraints = [orderBy("createdAt", "desc")];
@@ -162,14 +150,26 @@ export default function Assets() {
 
       setCurrentPage(pageNumber);
     } finally {
-      setLoading(false);
+      if (showLoader) setPageLoading(false);
     }
   };
 
   useEffect(() => {
-    loadStats();
-    loadMetaData();
-    loadAssetsPage(1, null);
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      try {
+        await Promise.all([
+          loadStats(),
+          loadMetaData(),
+          loadAssetsPage(1, null, false),
+        ]);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -213,8 +213,10 @@ export default function Assets() {
     if (confirm("هل تريد حذف الأصل؟")) {
       await deleteDoc(doc(db, "assets", id));
 
-      await loadStats();
-      await loadAssetsPage(currentPage, pageCursors[currentPage] || null);
+      await Promise.all([
+        loadStats(),
+        loadAssetsPage(currentPage, pageCursors[currentPage] || null),
+      ]);
     }
   };
 
@@ -289,19 +291,17 @@ export default function Assets() {
 
   const isQuickActive = (q) => {
     if (!q.key) return !Object.values(filters).some(Boolean);
-
     return filters[q.key] === q.value;
   };
 
   const categoryLabel = (category) => {
     if (category === "spare_part") return "قطعة غيار";
     if (category === "tool") return "أداة";
-
     return "معدة";
   };
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute pageLoading={initialLoading}>
       <Layout title="إدارة الأصول والعهد">
         <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">
@@ -331,7 +331,6 @@ export default function Assets() {
               <FontAwesomeIcon
                 icon={view === "table" ? faTableCells : faTableList}
               />
-
               {view === "table" ? "عرض كروت" : "عرض جدول"}
             </button>
 
@@ -427,15 +426,15 @@ export default function Assets() {
           </select>
         </div>
 
-        <div className="mb-3 text-sm font-bold text-slate-500">
-          المعروض في هذه الصفحة: {filtered.length} من إجمالي {stats.total}
-        </div>
-
-        {loading && (
+        {pageLoading && (
           <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
             جاري تحميل البيانات...
           </div>
         )}
+
+        <div className="mb-3 text-sm font-bold text-slate-500">
+          المعروض في هذه الصفحة: {filtered.length} من إجمالي {stats.total}
+        </div>
 
         {view === "table" ? (
           <div className="page-card overflow-x-auto">
@@ -476,7 +475,6 @@ export default function Assets() {
                     <td className="table-td">
                       <Link href={`/assets/${asset.id}`}>
                         <b>{asset.name}</b>
-
                         <p className="text-xs text-slate-400">
                           {asset.code || ""}
                         </p>
@@ -510,7 +508,6 @@ export default function Assets() {
                         }
                       >
                         <b>{getPlaceName(asset)}</b>
-
                         <p className="text-xs text-slate-400">
                           {getPlaceTypeLabel(asset.placeType)}
                         </p>
@@ -596,7 +593,10 @@ export default function Assets() {
                 </button>
 
                 <div className="p-4">
-                  <Link href={`/assets/${asset.id}`} className="text-lg font-black">
+                  <Link
+                    href={`/assets/${asset.id}`}
+                    className="text-lg font-black"
+                  >
                     {asset.name}
                   </Link>
 
@@ -642,7 +642,7 @@ export default function Assets() {
 
         <div className="mt-6 flex items-center justify-center gap-3">
           <button
-            disabled={currentPage === 1 || loading}
+            disabled={currentPage === 1 || pageLoading}
             onClick={() =>
               loadAssetsPage(currentPage - 1, pageCursors[currentPage - 1] || null)
             }
@@ -654,7 +654,7 @@ export default function Assets() {
           <span className="font-bold text-slate-700">صفحة {currentPage}</span>
 
           <button
-            disabled={!hasNextPage || loading}
+            disabled={!hasNextPage || pageLoading}
             onClick={() =>
               loadAssetsPage(currentPage + 1, pageCursors[currentPage + 1])
             }
