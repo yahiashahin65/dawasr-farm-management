@@ -13,7 +13,7 @@ import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 
-const cropTypes = ["برسيم", "رودس", "تبن"];
+const cropTypes = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
 export default function EditHeapPage() {
   const router = useRouter();
@@ -27,7 +27,7 @@ export default function EditHeapPage() {
     pileName: "",
     farmId: "",
     farmName: "",
-    cropType: "برسيم",
+    cropType: "غير معلوم",
     sprinklerName: "",
     bricksCount: "",
     imageUrl: "",
@@ -66,9 +66,12 @@ export default function EditHeapPage() {
             pileName: data.pileName || "",
             farmId: data.farmId || "",
             farmName: data.farmName || "",
-            cropType: data.cropType || "برسيم",
+            cropType: data.cropType || "غير معلوم",
             sprinklerName: data.sprinklerName || "",
-            bricksCount: data.bricksCount || "",
+            bricksCount:
+              data.bricksCount === null || data.bricksCount === undefined
+                ? ""
+                : data.bricksCount,
             imageUrl: data.imageUrl || "",
             notes: data.notes || "",
           });
@@ -119,18 +122,8 @@ export default function EditHeapPage() {
       return;
     }
 
-    if (!form.cropType) {
-      alert("نوع الكوم مطلوب");
-      return;
-    }
-
     if (!form.sprinklerName.trim()) {
       alert("مكان أو رقم الرشاش مطلوب");
-      return;
-    }
-
-    if (!form.bricksCount || Number(form.bricksCount) <= 0) {
-      alert("عدد اللبن مطلوب");
       return;
     }
 
@@ -148,10 +141,13 @@ export default function EditHeapPage() {
         farmId: form.farmId,
         farmName: selectedFarm?.name || form.farmName || "",
 
-        cropType: form.cropType,
+        cropType: form.cropType || "غير معلوم",
 
         sprinklerName: form.sprinklerName.trim(),
-        bricksCount: Number(form.bricksCount || 0),
+
+        bricksCount: form.bricksCount
+          ? Number(form.bricksCount)
+          : null,
 
         imageUrl,
         notes: form.notes.trim(),
@@ -228,7 +224,7 @@ export default function EditHeapPage() {
               <input
                 className="form-input"
                 type="number"
-                placeholder="عدد اللبن"
+                placeholder="عدد اللبن اختياري"
                 value={form.bricksCount}
                 onChange={(e) =>
                   setForm({ ...form, bricksCount: e.target.value })
