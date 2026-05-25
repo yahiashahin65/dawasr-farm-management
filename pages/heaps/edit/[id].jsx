@@ -1,50 +1,80 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../../../lib/firebase";
+import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
+import ProtectedRoute from "../../../components/ProtectedRoute";
+import Layout from "../../../components/Layout";
 
 export default function EditHeapPage() {
   const router = useRouter();
   const { id } = router.query;
 
+  const [farms, setFarms] = useState([]);
+  const [image, setImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+
   const [form, setForm] = useState({
-    pileName: '',
-    farmName: '',
-    sprinklerName: '',
-    bricksCount: '',
-    imageUrl: '',
-    notes: '',
+    pileName: "",
+    farmId: "",
+    farmName: "",
+    sprinklerName: "",
+    bricksCount: "",
+    imageUrl: "",
+    notes: "",
   });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    const loadFarms = async () => {
+      const farmsSnap = await getDocs(collection(db, "farms"));
+
+      const cleanFarms = farmsSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((item) => item.name && item.name.trim() !== "");
+
+      setFarms(cleanFarms);
+    };
+
+    loadFarms();
+  }, []);
+
+  useEffect(() => {
     if (!id) return;
 
     const fetchHeap = async () => {
       try {
-        const heapRef = doc(db, 'heaps', id);
+        const heapRef = doc(db, "heaps", id);
         const heapSnap = await getDoc(heapRef);
 
         if (heapSnap.exists()) {
           const data = heapSnap.data();
 
           setForm({
-            pileName: data.pileName || '',
-            farmName: data.farmName || '',
-            sprinklerName: data.sprinklerName || '',
-            bricksCount: data.bricksCount || '',
-            imageUrl: data.imageUrl || '',
-            notes: data.notes || '',
+            pileName: data.pileName || "",
+            farmId: data.farmId || "",
+            farmName: data.farmName || "",
+            sprinklerName: data.sprinklerName || "",
+            bricksCount: data.bricksCount || "",
+            imageUrl: data.imageUrl || "",
+            notes: data.notes || "",
           });
         } else {
-          alert('الكوم غير موجود');
-          router.push('/heaps');
+          alert("الكوم غير موجود");
+          router.push("/heaps");
         }
       } catch (error) {
         console.error(error);
-        alert('حدث خطأ أثناء تحميل بيانات الكوم');
+        alert("حدث خطأ أثناء تحميل بيانات الكوم");
       } finally {
         setLoading(false);
       }
@@ -53,114 +83,197 @@ export default function EditHeapPage() {
     fetchHeap();
   }, [id, router]);
 
-  const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+  useEffect(() => {
+    if (!image) {
+      setImagePreview("");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(image);
+    setImagePreview(previewUrl);
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [image]);
+
+  const uploadImage = async () => {
+    if (!image) return form.imageUrl || "";
+    return fileToFirestoreImage(image);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    try {
-      setSaving(true);
+    if (saving) return;
 
-      const heapRef = doc(db, 'heaps', id);
+    if (!form.pileName.trim()) {
+      alert("اسم الكوم مطلوب");
+      return;
+    }
+
+    if (!form.farmId) {
+      alert("المزرعة مطلوبة");
+      return;
+    }
+
+    if (!form.sprinklerName.trim()) {
+      alert("مكان أو رقم الرشاش مطلوب");
+      return;
+    }
+
+    if (!form.bricksCount || Number(form.bricksCount) <= 0) {
+      alert("عدد اللبن مطلوب");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+      const imageUrl = await uploadImage();
+
+      const heapRef = doc(db, "heaps", id);
 
       await updateDoc(heapRef, {
-        ...form,
+        pileName: form.pileName.trim(),
+
+        farmId: form.farmId,
+        farmName: selectedFarm?.name || form.farmName || "",
+
+        sprinklerName: form.sprinklerName.trim(),
         bricksCount: Number(form.bricksCount || 0),
+
+        imageUrl,
+        notes: form.notes.trim(),
+
         updatedAt: serverTimestamp(),
       });
 
-      router.push('/heaps');
+      router.push("/heaps");
     } catch (error) {
       console.error(error);
-      alert('حدث خطأ أثناء تعديل الكوم');
-    } finally {
+      alert(error.message || "حدث خطأ أثناء تعديل الكوم");
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return <div className="p-6">جاري تحميل البيانات...</div>;
-  }
-
   return (
-    <div dir="rtl" className="p-6">
-      <h1 className="mb-6 text-2xl font-bold">تعديل الكوم</h1>
+    <ProtectedRoute>
+      <Layout title="تعديل الكوم">
+        {loading ? (
+          <div className="page-card p-5">جاري تحميل البيانات...</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="page-card max-w-5xl p-5 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <input
+                className="form-input"
+                placeholder="اسم الكوم"
+                value={form.pileName}
+                onChange={(e) =>
+                  setForm({ ...form, pileName: e.target.value })
+                }
+              />
 
-      <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
-        <input
-          name="pileName"
-          placeholder="اسم الكوم"
-          value={form.pileName}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-          required
-        />
+              <select
+                className="form-input"
+                value={form.farmId}
+                onChange={(e) =>
+                  setForm({ ...form, farmId: e.target.value })
+                }
+              >
+                <option value="">اختر المزرعة</option>
+                {farms.map((farm) => (
+                  <option key={farm.id} value={farm.id}>
+                    {farm.name}
+                  </option>
+                ))}
+              </select>
 
-        <input
-          name="farmName"
-          placeholder="اسم المزرعة"
-          value={form.farmName}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-          required
-        />
+              <input
+                className="form-input"
+                placeholder="مكان/رقم الرشاش، مثال: رشاش 18"
+                value={form.sprinklerName}
+                onChange={(e) =>
+                  setForm({ ...form, sprinklerName: e.target.value })
+                }
+              />
 
-        <input
-          name="sprinklerName"
-          placeholder="مكان/رقم الرشاش"
-          value={form.sprinklerName}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-          required
-        />
+              <input
+                className="form-input"
+                type="number"
+                placeholder="عدد اللبن"
+                value={form.bricksCount}
+                onChange={(e) =>
+                  setForm({ ...form, bricksCount: e.target.value })
+                }
+              />
+            </div>
 
-        <input
-          name="bricksCount"
-          type="number"
-          placeholder="عدد اللبن"
-          value={form.bricksCount}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-          required
-        />
+            <div className="space-y-3">
+              {form.imageUrl && !imagePreview && (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+                  <img
+                    src={form.imageUrl}
+                    alt="صورة الكوم الحالية"
+                    className="max-h-72 w-full rounded-2xl object-contain"
+                  />
+                </div>
+              )}
 
-        <input
-          name="imageUrl"
-          placeholder="رابط صورة الكوم"
-          value={form.imageUrl}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-        />
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
+                  تصوير صورة جديدة
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => setImage(e.target.files?.[0] || null)}
+                  />
+                </label>
 
-        <textarea
-          name="notes"
-          placeholder="ملاحظات"
-          value={form.notes}
-          onChange={handleChange}
-          className="w-full rounded border p-3"
-        />
+                <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
+                  رفع صورة جديدة من الجهاز
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => setImage(e.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
 
-        {form.imageUrl && (
-          <img
-            src={form.imageUrl}
-            alt="صورة الكوم"
-            className="h-32 w-32 rounded object-cover"
-          />
+              {imagePreview && (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+                  <img
+                    src={imagePreview}
+                    alt="معاينة الصورة الجديدة"
+                    className="max-h-72 w-full rounded-2xl object-contain"
+                  />
+
+                  <button
+                    type="button"
+                    className="btn-secondary mt-3"
+                    onClick={() => setImage(null)}
+                  >
+                    حذف الصورة المختارة
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <textarea
+              className="form-input h-28"
+              placeholder="ملاحظات"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            />
+
+            <button disabled={saving} className="btn-primary">
+              {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+            </button>
+          </form>
         )}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded bg-blue-700 px-6 py-3 text-white disabled:opacity-50"
-        >
-          {saving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
-        </button>
-      </form>
-    </div>
+      </Layout>
+    </ProtectedRoute>
   );
 }
