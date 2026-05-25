@@ -6,7 +6,6 @@ import { db } from "../../lib/firebase";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
-const cropTypes = ["برسيم", "رودس", "تبن"];
 export default function HeapDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -53,10 +52,7 @@ export default function HeapDetailsPage() {
                 تفاصيل الكوم
               </h1>
 
-              <Link
-                href={`/heaps/edit/${heap.id}`}
-                className="btn-primary"
-              >
+              <Link href={`/heaps/edit/${heap.id}`} className="btn-primary">
                 تعديل الكوم
               </Link>
             </div>
@@ -76,6 +72,13 @@ export default function HeapDetailsPage() {
                 <p className="text-sm font-bold text-slate-500">اسم الكوم</p>
                 <p className="mt-1 text-lg font-black text-slate-800">
                   {heap.pileName || "-"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">نوع الكوم</p>
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {heap.cropType || "-"}
                 </p>
               </div>
 
