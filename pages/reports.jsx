@@ -128,7 +128,9 @@ export default function Reports() {
     heaps.forEach((heap) => {
       const farmName = heap.farmName || "غير محدد";
       const sprinklerName = heap.sprinklerName || "غير محدد";
-      const cropType = heap.cropType || "غير محدد";
+      const sprinklerKey = `${farmName} - ${sprinklerName}`;
+
+      const cropType = heap.cropType || "غير معلوم";
       const bricks = Number(heap.bricksCount || 0);
 
       if (!byFarmMap[farmName]) {
@@ -137,15 +139,15 @@ export default function Reports() {
       byFarmMap[farmName].count += 1;
       byFarmMap[farmName].bricks += bricks;
 
-      if (!bySprinklerMap[sprinklerName]) {
-        bySprinklerMap[sprinklerName] = {
-          label: sprinklerName,
+      if (!bySprinklerMap[sprinklerKey]) {
+        bySprinklerMap[sprinklerKey] = {
+          label: sprinklerKey,
           count: 0,
           bricks: 0,
         };
       }
-      bySprinklerMap[sprinklerName].count += 1;
-      bySprinklerMap[sprinklerName].bricks += bricks;
+      bySprinklerMap[sprinklerKey].count += 1;
+      bySprinklerMap[sprinklerKey].bricks += bricks;
 
       if (!byCropTypeMap[cropType]) {
         byCropTypeMap[cropType] = { label: cropType, count: 0, bricks: 0 };
@@ -317,7 +319,7 @@ export default function Reports() {
             <HeapReportList rows={heapStats.byFarm} />
           </Section>
 
-          <Section title="الأكوام حسب الرشاش">
+          <Section title="الأكوام حسب المزرعة والرشاش">
             <HeapReportList rows={heapStats.bySprinkler} />
           </Section>
         </div>
@@ -344,10 +346,12 @@ export default function Reports() {
                       {heap.pileName || "-"}
                     </Link>
                   </td>
-                  <td className="table-td">{heap.cropType || "-"}</td>
+                  <td className="table-td">{heap.cropType || "غير معلوم"}</td>
                   <td className="table-td">{heap.farmName || "-"}</td>
                   <td className="table-td">{heap.sprinklerName || "-"}</td>
-                  <td className="table-td">{heap.bricksCount || 0}</td>
+                  <td className="table-td">
+                    {heap.bricksCount ? heap.bricksCount : "غير محدد"}
+                  </td>
                 </tr>
               ))}
 
