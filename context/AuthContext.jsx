@@ -12,8 +12,6 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setLoading(true);
-
       if (!currentUser) {
         setUser(null);
         setRole("viewer");
@@ -23,12 +21,25 @@ export function AuthProvider({ children }) {
 
       setUser(currentUser);
 
+      const roleKey = `userRole_${currentUser.uid}`;
+      const cachedRole = localStorage.getItem(roleKey);
+
+      if (cachedRole) {
+        setRole(cachedRole);
+        setLoading(false);
+      }
+
       try {
         const userSnap = await getDoc(doc(db, "users", currentUser.uid));
-        setRole(userSnap.exists() ? userSnap.data()?.role || "viewer" : "viewer");
+        const freshRole = userSnap.exists()
+          ? userSnap.data()?.role || "viewer"
+          : "viewer";
+
+        setRole(freshRole);
+        localStorage.setItem(roleKey, freshRole);
       } catch (error) {
         console.error(error);
-        setRole("viewer");
+        setRole(cachedRole || "viewer");
       } finally {
         setLoading(false);
       }
@@ -55,10 +66,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
-
+  if (!context) throw new Error("useAuth must be used inside AuthProvider");
   return context;
 }
