@@ -56,7 +56,10 @@ function StatCard({ title, value, href, icon, sub, tone = "green" }) {
   };
 
   return (
-    <Link href={href} className="page-card group p-5 transition hover:-translate-y-1 hover:shadow-lg">
+    <Link
+      href={href}
+      className="page-card group p-5 transition hover:-translate-y-1 hover:shadow-lg"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-bold text-slate-500">{title}</p>
@@ -64,7 +67,9 @@ function StatCard({ title, value, href, icon, sub, tone = "green" }) {
           {sub ? <p className="mt-2 text-xs text-slate-400">{sub}</p> : null}
         </div>
 
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} group-hover:text-white`}>
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} group-hover:text-white`}
+        >
           <FontAwesomeIcon icon={icon} />
         </div>
       </div>
@@ -86,7 +91,9 @@ function MiniTable({ title, items, empty = "لا توجد بيانات" }) {
               className="flex items-center justify-between rounded-2xl border border-slate-100 p-3 hover:bg-slate-50"
             >
               <span className="font-bold text-slate-700">{item.label}</span>
-              <span className="badge bg-slate-100 text-slate-700">{item.count}</span>
+              <span className="badge bg-slate-100 text-slate-700">
+                {item.count}
+              </span>
             </Link>
           ))
         ) : (
@@ -107,30 +114,48 @@ export default function Dashboard() {
   const [movements, setMovements] = useState([]);
   const [heaps, setHeaps] = useState([]);
 
+  const [initialLoading, setInitialLoading] = useState(true);
+
   useEffect(() => {
-    Promise.all([
-      getDocs(query(collection(db, "assets"), orderBy("createdAt", "desc"))),
-      getDocs(collection(db, "workers")),
-      getDocs(collection(db, "farms")),
-      getDocs(collection(db, "engineers")),
-      getDocs(collection(db, "kubras")),
-      getDocs(collection(db, "assetTypes")),
-      getDocs(query(collection(db, "heaps"), orderBy("createdAt", "desc"))).catch(() =>
-        getDocs(collection(db, "heaps"))
-      ),
-      getDocs(query(collection(db, "assetMovements"), orderBy("createdAt", "desc"), limit(8))).catch(() =>
-        getDocs(collection(db, "assetMovements"))
-      ),
-    ]).then(([a, w, f, e, k, t, h, m]) => {
-      setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setWorkers(normalizeList(w.docs));
-      setFarms(normalizeList(f.docs));
-      setEngineers(normalizeList(e.docs));
-      setKubras(normalizeList(k.docs));
-      setTypes(normalizeList(t.docs));
-      setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 20));
-      setMovements(m.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 8));
-    });
+    const loadInitialData = async () => {
+      setInitialLoading(true);
+
+      try {
+        const [a, w, f, e, k, t, h, m] = await Promise.all([
+          getDocs(query(collection(db, "assets"), orderBy("createdAt", "desc"))),
+          getDocs(collection(db, "workers")),
+          getDocs(collection(db, "farms")),
+          getDocs(collection(db, "engineers")),
+          getDocs(collection(db, "kubras")),
+          getDocs(collection(db, "assetTypes")),
+          getDocs(
+            query(collection(db, "heaps"), orderBy("createdAt", "desc"))
+          ).catch(() => getDocs(collection(db, "heaps"))),
+          getDocs(
+            query(
+              collection(db, "assetMovements"),
+              orderBy("createdAt", "desc"),
+              limit(8)
+            )
+          ).catch(() => getDocs(collection(db, "assetMovements"))),
+        ]);
+
+        setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setWorkers(normalizeList(w.docs));
+        setFarms(normalizeList(f.docs));
+        setEngineers(normalizeList(e.docs));
+        setKubras(normalizeList(k.docs));
+        setTypes(normalizeList(t.docs));
+        setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 20));
+        setMovements(
+          m.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 8)
+        );
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadInitialData();
   }, []);
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
@@ -138,11 +163,16 @@ export default function Dashboard() {
   const validTypeIds = useMemo(() => types.map((type) => type.id), [types]);
 
   const invalidTypesCount = useMemo(
-    () => assets.filter((asset) => isAssetWithoutValidType(asset, validTypeIds)).length,
+    () =>
+      assets.filter((asset) =>
+        isAssetWithoutValidType(asset, validTypeIds)
+      ).length,
     [assets, validTypeIds]
   );
 
-  const healthRate = stats.total ? Math.round((stats.good / stats.total) * 100) : 0;
+  const healthRate = stats.total
+    ? Math.round((stats.good / stats.total) * 100)
+    : 0;
 
   const heapStats = useMemo(() => {
     const totalHeaps = heaps.length;
@@ -171,7 +201,9 @@ export default function Dashboard() {
     return {
       totalHeaps,
       totalBricks,
-      byCropType: Object.values(byCropTypeMap).sort((a, b) => b.count - a.count),
+      byCropType: Object.values(byCropTypeMap).sort(
+        (a, b) => b.count - a.count
+      ),
       latest: heaps.slice(0, 8),
     };
   }, [heaps]);
@@ -335,7 +367,9 @@ export default function Dashboard() {
   const byFarm = farms
     .map((farm) => ({
       label: farm.name,
-      count: assets.filter((asset) => asset.farmId === farm.id || asset.placeId === farm.id).length,
+      count: assets.filter(
+        (asset) => asset.farmId === farm.id || asset.placeId === farm.id
+      ).length,
       href: `/assets?farmId=${farm.id}`,
     }))
     .sort((a, b) => b.count - a.count)
@@ -344,7 +378,9 @@ export default function Dashboard() {
   const byKubra = kubras
     .map((kubra) => ({
       label: kubra.name,
-      count: assets.filter((asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id).length,
+      count: assets.filter(
+        (asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id
+      ).length,
       href: `/assets?kubraId=${kubra.id}`,
     }))
     .sort((a, b) => b.count - a.count)
@@ -353,7 +389,9 @@ export default function Dashboard() {
   const byWorker = workers
     .map((worker) => ({
       label: worker.name,
-      count: assets.filter((asset) => (asset.workerIds || []).includes(worker.id)).length,
+      count: assets.filter((asset) =>
+        (asset.workerIds || []).includes(worker.id)
+      ).length,
       href: `/assets?workerId=${worker.id}`,
     }))
     .sort((a, b) => b.count - a.count)
@@ -361,13 +399,17 @@ export default function Dashboard() {
 
   const byCategory = [
     { label: "معدات", count: stats.equipment, href: "/assets?category=asset" },
-    { label: "قطع غيار", count: stats.spareParts, href: "/assets?category=spare_part" },
+    {
+      label: "قطع غيار",
+      count: stats.spareParts,
+      href: "/assets?category=spare_part",
+    },
     { label: "أدوات", count: stats.tools, href: "/assets?category=tool" },
     { label: "مواد", count: stats.materials, href: "/assets?category=material" },
   ];
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute pageLoading={initialLoading}>
       <Layout title="لوحة التحكم">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
           {cards.map((card) => (
@@ -376,7 +418,10 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          <MiniTable title="الأكوام حسب النوع / عدد اللبن" items={heapStats.byCropType} />
+          <MiniTable
+            title="الأكوام حسب النوع / عدد اللبن"
+            items={heapStats.byCropType}
+          />
           <MiniTable title="حسب نوع المعدة" items={byType} />
           <MiniTable title="حسب التصنيف" items={byCategory} />
           <MiniTable title="حسب المزرعة" items={byFarm} />
@@ -400,9 +445,14 @@ export default function Dashboard() {
 
               <tbody>
                 {heapStats.latest.map((heap) => (
-                  <tr key={heap.id} className="clickable-row border-t border-slate-100">
+                  <tr
+                    key={heap.id}
+                    className="clickable-row border-t border-slate-100"
+                  >
                     <td className="table-td font-bold">
-                      <Link href={`/heaps/${heap.id}`}>{heap.pileName || "-"}</Link>
+                      <Link href={`/heaps/${heap.id}`}>
+                        {heap.pileName || "-"}
+                      </Link>
                     </td>
                     <td className="table-td">{heap.cropType || "-"}</td>
                     <td className="table-td">{heap.farmName || "-"}</td>
@@ -437,7 +487,10 @@ export default function Dashboard() {
 
               <tbody>
                 {assets.slice(0, 8).map((asset) => (
-                  <tr key={asset.id} className="clickable-row border-t border-slate-100">
+                  <tr
+                    key={asset.id}
+                    className="clickable-row border-t border-slate-100"
+                  >
                     <td className="table-td font-bold">
                       <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
                     </td>
@@ -449,7 +502,10 @@ export default function Dashboard() {
                     <td className="table-td">{getAssetTypeName(asset)}</td>
                     <td className="table-td">{getPlaceName(asset)}</td>
                     <td className="table-td">
-                      <Link href={`/assets?status=${asset.status}`} className={`badge ${badgeClass(asset.status)}`}>
+                      <Link
+                        href={`/assets?status=${asset.status}`}
+                        className={`badge ${badgeClass(asset.status)}`}
+                      >
                         {asset.status}
                       </Link>
                     </td>
@@ -474,13 +530,21 @@ export default function Dashboard() {
 
               <tbody>
                 {movements.map((movement) => (
-                  <tr key={movement.id} className="clickable-row border-t border-slate-100">
-                    <td className="table-td font-bold">{movement.assetName || "-"}</td>
+                  <tr
+                    key={movement.id}
+                    className="clickable-row border-t border-slate-100"
+                  >
+                    <td className="table-td font-bold">
+                      {movement.assetName || "-"}
+                    </td>
                     <td className="table-td">{movement.fromPlaceName || "-"}</td>
                     <td className="table-td">{movement.toPlaceName || "-"}</td>
                     <td className="table-td">
                       {movement.assetId ? (
-                        <Link className="btn-secondary !py-2" href={`/assets/${movement.assetId}`}>
+                        <Link
+                          className="btn-secondary !py-2"
+                          href={`/assets/${movement.assetId}`}
+                        >
                           <FontAwesomeIcon icon={faArrowUpRightDots} />
                           التفاصيل
                         </Link>
