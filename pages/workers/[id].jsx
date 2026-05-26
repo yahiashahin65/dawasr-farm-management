@@ -9,9 +9,12 @@ import {
   query,
   where,
 } from "firebase/firestore";
+
 import { db } from "../../lib/firebase";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
 
 export default function WorkerDetails() {
   const router = useRouter();
@@ -65,9 +68,15 @@ export default function WorkerDetails() {
   }, [id]);
 
   return (
-    <ProtectedRoute pageLoading={initialLoading}>
+    <ProtectedRoute>
       <Layout title="تفاصيل العامل">
-        {!worker ? (
+        {initialLoading ? (
+          <AppLoader
+            variant="compact"
+            title="جاري تحميل تفاصيل العامل..."
+            subtitle="يتم تجهيز بيانات العامل والعهد المسجلة عليه"
+          />
+        ) : !worker ? (
           <div className="page-card p-5 text-center font-bold text-slate-500">
             العامل غير موجود
           </div>
@@ -123,9 +132,7 @@ export default function WorkerDetails() {
                     </Link>
                   ))
                 ) : (
-                  <p className="text-sm text-slate-500">
-                    لا توجد عهد مسجلة.
-                  </p>
+                  <p className="text-sm text-slate-500">لا توجد عهد مسجلة.</p>
                 )}
               </div>
             </div>
