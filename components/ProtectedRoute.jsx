@@ -499,104 +499,148 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
           }
 
           @media (max-width: 640px) {
-            .sun {
-              left: -52px;
-              top: -58px;
-              width: 138px;
-              height: 138px;
-            }
+  .scene {
+    width: 94vw;
+    height: 560px;
+    min-height: 560px;
+    border-radius: 34px;
+  }
 
-            .sun-rays {
-              left: -82px;
-              top: -82px;
-              width: 220px;
-              height: 220px;
-            }
+  .sun {
+    left: -58px;
+    top: -60px;
+    width: 140px;
+    height: 140px;
+  }
 
-            .birds {
-              top: 70px;
-              width: 130px;
-            }
+  .sun-rays {
+    left: -88px;
+    top: -88px;
+    width: 220px;
+    height: 220px;
+  }
 
-            .scene {
-              height: 620px;
-              min-height: 620px;
-              border-radius: 36px;
-            }
+  .birds {
+    top: 52px;
+    width: 125px;
+    transform: translateX(-40%);
+  }
 
-            .sign-board {
-              top: 84px;
-              width: 78vw;
-              padding: 20px 14px;
-            }
+  .cloud {
+    display: none;
+  }
 
-            .sign-board::before,
-            .sign-board::after {
-              bottom: -95px;
-              height: 95px;
-              width: 18px;
-            }
+  .sign-board {
+    top: 72px;
+    width: 78vw;
+    padding: 18px 12px;
+    border-width: 5px;
+    border-radius: 24px;
+  }
 
-            .sign-board::before {
-              right: 52px;
-            }
+  .sign-title {
+    font-size: 24px;
+  }
 
-            .sign-board::after {
-              left: 52px;
-            }
+  .sign-board::before,
+  .sign-board::after {
+    bottom: -82px;
+    width: 16px;
+    height: 82px;
+  }
 
-            .tractor-track {
-              bottom: 258px;
-            }
+  .sign-board::before {
+    right: 42px;
+  }
 
-            .tractor {
-              width: 128px;
-              height: 82px;
-            }
+  .sign-board::after {
+    left: 42px;
+  }
 
-            .tractor-body {
-              width: 72px;
-              height: 36px;
-            }
+  .tractor-track {
+    bottom: 246px;
+    height: 120px;
+  }
 
-            .tractor-cabin {
-              width: 42px;
-              height: 37px;
-            }
+  .tractor {
+    width: 118px;
+    height: 76px;
+  }
 
-            .tractor-window {
-              width: 27px;
-              height: 21px;
-            }
+  .tractor-body {
+    left: 34px;
+    bottom: 22px;
+    width: 68px;
+    height: 34px;
+  }
 
-            .wheel.big {
-              width: 50px;
-              height: 50px;
-            }
+  .tractor-front {
+    right: 8px;
+    bottom: 25px;
+    width: 30px;
+    height: 28px;
+  }
 
-            .wheel.small {
-              width: 36px;
-              height: 36px;
-            }
+  .tractor-cabin {
+    left: 18px;
+    bottom: 50px;
+    width: 40px;
+    height: 34px;
+  }
 
-            .hill {
-              height: 250px;
-            }
+  .tractor-window {
+    left: 25px;
+    bottom: 57px;
+    width: 26px;
+    height: 19px;
+  }
 
-            .loading-card {
-              bottom: 36px;
-              width: 86vw;
-              padding: 22px 18px 24px;
-              border-radius: 38px;
-            }
+  .tractor-pipe {
+    right: 22px;
+    bottom: 53px;
+    height: 27px;
+  }
 
-            .loading-subtitle {
-              font-size: 13px;
-            }
-          }
-        `}</style>
+  .wheel.big {
+    left: 14px;
+    width: 48px;
+    height: 48px;
+    border-width: 7px;
+  }
 
-        <div className="sun-rays" />
+  .wheel.small {
+    right: 14px;
+    width: 34px;
+    height: 34px;
+    border-width: 6px;
+  }
+
+  .hill {
+    height: 230px;
+  }
+
+  .loading-card {
+    bottom: 34px;
+    width: 84vw;
+    padding: 20px 16px 22px;
+    border-radius: 34px;
+  }
+
+  .loading-title {
+    font-size: 22px;
+  }
+
+  .loading-subtitle {
+    font-size: 12px;
+  }
+
+  .progress {
+    height: 17px;
+    margin-top: 16px;
+  }
+}       
+          `}</style>
+          <div className="sun-rays" />
         <div className="sun" />
 
         <div className="birds">
