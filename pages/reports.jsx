@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
+
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
+import AppLoader from "../components/AppLoader";
+
 import { calculateAssetsStats } from "../lib/assetsStats";
 import {
   badgeClass,
@@ -129,13 +132,13 @@ export default function Reports() {
       const farmName = heap.farmName || "غير محدد";
       const sprinklerName = heap.sprinklerName || "غير محدد";
       const sprinklerKey = `${farmName} - ${sprinklerName}`;
-
       const cropType = heap.cropType || "غير معلوم";
       const bricks = Number(heap.bricksCount || 0);
 
       if (!byFarmMap[farmName]) {
         byFarmMap[farmName] = { label: farmName, count: 0, bricks: 0 };
       }
+
       byFarmMap[farmName].count += 1;
       byFarmMap[farmName].bricks += bricks;
 
@@ -146,12 +149,14 @@ export default function Reports() {
           bricks: 0,
         };
       }
+
       bySprinklerMap[sprinklerKey].count += 1;
       bySprinklerMap[sprinklerKey].bricks += bricks;
 
       if (!byCropTypeMap[cropType]) {
         byCropTypeMap[cropType] = { label: cropType, count: 0, bricks: 0 };
       }
+
       byCropTypeMap[cropType].count += 1;
       byCropTypeMap[cropType].bricks += bricks;
     });
@@ -248,174 +253,192 @@ export default function Reports() {
     .sort((a, b) => b.count - a.count);
 
   return (
-    <ProtectedRoute pageLoading={initialLoading}>
+    <ProtectedRoute>
       <Layout title="التقارير">
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
-          {rowsByStatus.map((row) => (
-            <Link key={row.label} href={row.href} className="page-card p-4">
-              <p className="text-sm font-bold text-slate-500">{row.label}</p>
-              <h3 className="mt-2 text-4xl font-black text-slate-900">
-                {row.count}
-              </h3>
-              <span className={`mt-3 inline-flex badge ${badgeClass(row.label)}`}>
-                عرض الأصول
-              </span>
-            </Link>
-          ))}
-        </div>
-
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          <Link href="/heaps" className="page-card p-4">
-            <p className="text-sm font-bold text-slate-500">إجمالي الأكوام</p>
-            <h3 className="mt-2 text-4xl font-black text-slate-900">
-              {heapStats.totalHeaps}
-            </h3>
-            <span className="mt-3 inline-flex badge bg-green-50 text-green-700">
-              عرض الأكوام
-            </span>
-          </Link>
-
-          <div className="page-card p-4">
-            <p className="text-sm font-bold text-slate-500">إجمالي عدد اللبن</p>
-            <h3 className="mt-2 text-4xl font-black text-slate-900">
-              {heapStats.totalBricks}
-            </h3>
-            <span className="mt-3 inline-flex badge bg-slate-100 text-slate-700">
-              من الأكوام
-            </span>
-          </div>
-        </div>
-
-        <div className="grid gap-3 xl:grid-cols-2">
-          <Section title="حسب التصنيف">
-            <RowList rows={rowsByCategory} />
-          </Section>
-
-          <Section title="حسب نوع الأصل">
-            <RowList rows={rowsByType} />
-          </Section>
-
-          <Section title="حسب نوع المكان">
-            <RowList rows={rowsByPlaceType} />
-          </Section>
-
-          <Section title="حسب المزرعة">
-            <RowList rows={rowsByFarm} />
-          </Section>
-
-          <Section title="حسب الكِبرة">
-            <RowList rows={rowsByKubra} />
-          </Section>
-
-          <Section title="حسب العامل">
-            <RowList rows={rowsByWorker} />
-          </Section>
-
-          <Section title="الأكوام حسب النوع">
-            <HeapReportList rows={heapStats.byCropType} />
-          </Section>
-
-          <Section title="الأكوام حسب المزرعة">
-            <HeapReportList rows={heapStats.byFarm} />
-          </Section>
-
-          <Section title="الأكوام حسب المزرعة والرشاش">
-            <HeapReportList rows={heapStats.bySprinkler} />
-          </Section>
-        </div>
-
-        <div className="page-card mt-4 overflow-x-auto">
-          <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
-
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-th">الكوم</th>
-                <th className="table-th">النوع</th>
-                <th className="table-th">المزرعة</th>
-                <th className="table-th">الرشاش</th>
-                <th className="table-th">عدد اللبن</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {heapStats.latest.map((heap) => (
-                <tr key={heap.id} className="border-t border-slate-100">
-                  <td className="table-td font-bold">
-                    <Link href={`/heaps/${heap.id}`}>
-                      {heap.pileName || "-"}
-                    </Link>
-                  </td>
-                  <td className="table-td">{heap.cropType || "غير معلوم"}</td>
-                  <td className="table-td">{heap.farmName || "-"}</td>
-                  <td className="table-td">{heap.sprinklerName || "-"}</td>
-                  <td className="table-td">
-                    {heap.bricksCount ? heap.bricksCount : "غير محدد"}
-                  </td>
-                </tr>
+        {initialLoading ? (
+          <AppLoader
+            variant="compact"
+            title="جاري تحميل التقارير..."
+            subtitle="يتم تجهيز بيانات الأصول والأكوام"
+          />
+        ) : (
+          <>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              {rowsByStatus.map((row) => (
+                <Link key={row.label} href={row.href} className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">{row.label}</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {row.count}
+                  </h3>
+                  <span
+                    className={`mt-3 inline-flex badge ${badgeClass(row.label)}`}
+                  >
+                    عرض الأصول
+                  </span>
+                </Link>
               ))}
+            </div>
 
-              {heapStats.latest.length === 0 && (
-                <tr>
-                  <td className="table-td text-center" colSpan="5">
-                    لا توجد أكوام
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <Link href="/heaps" className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الأكوام
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {heapStats.totalHeaps}
+                </h3>
+                <span className="mt-3 inline-flex badge bg-green-50 text-green-700">
+                  عرض الأكوام
+                </span>
+              </Link>
 
-        <div className="page-card mt-4 overflow-x-auto">
-          <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
+              <div className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي عدد اللبن
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {heapStats.totalBricks}
+                </h3>
+                <span className="mt-3 inline-flex badge bg-slate-100 text-slate-700">
+                  من الأكوام
+                </span>
+              </div>
+            </div>
 
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-th">الأصل</th>
-                <th className="table-th">التصنيف</th>
-                <th className="table-th">النوع</th>
-                <th className="table-th">المكان</th>
-                <th className="table-th">نوع المكان</th>
-                <th className="table-th">الحالة</th>
-              </tr>
-            </thead>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <Section title="حسب التصنيف">
+                <RowList rows={rowsByCategory} />
+              </Section>
 
-            <tbody>
-              {assets.map((asset) => (
-                <tr key={asset.id} className="border-t border-slate-100">
-                  <td className="table-td font-bold">
-                    <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
-                  </td>
-                  <td className="table-td">
-                    <span className="badge bg-purple-50 text-purple-700">
-                      {getAssetCategoryLabel(asset.category)}
-                    </span>
-                  </td>
-                  <td className="table-td">{getAssetTypeName(asset)}</td>
-                  <td className="table-td">{getPlaceName(asset)}</td>
-                  <td className="table-td">{getPlaceTypeLabel(asset.placeType)}</td>
-                  <td className="table-td">
-                    <Link
-                      href={`/assets?status=${asset.status}`}
-                      className={`badge ${badgeClass(asset.status)}`}
-                    >
-                      {asset.status}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              <Section title="حسب نوع الأصل">
+                <RowList rows={rowsByType} />
+              </Section>
 
-              {assets.length === 0 && (
-                <tr>
-                  <td className="table-td text-center" colSpan="6">
-                    لا توجد أصول
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              <Section title="حسب نوع المكان">
+                <RowList rows={rowsByPlaceType} />
+              </Section>
+
+              <Section title="حسب المزرعة">
+                <RowList rows={rowsByFarm} />
+              </Section>
+
+              <Section title="حسب الكِبرة">
+                <RowList rows={rowsByKubra} />
+              </Section>
+
+              <Section title="حسب العامل">
+                <RowList rows={rowsByWorker} />
+              </Section>
+
+              <Section title="الأكوام حسب النوع">
+                <HeapReportList rows={heapStats.byCropType} />
+              </Section>
+
+              <Section title="الأكوام حسب المزرعة">
+                <HeapReportList rows={heapStats.byFarm} />
+              </Section>
+
+              <Section title="الأكوام حسب المزرعة والرشاش">
+                <HeapReportList rows={heapStats.bySprinkler} />
+              </Section>
+            </div>
+
+            <div className="page-card mt-4 overflow-x-auto">
+              <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
+
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="table-th">الكوم</th>
+                    <th className="table-th">النوع</th>
+                    <th className="table-th">المزرعة</th>
+                    <th className="table-th">الرشاش</th>
+                    <th className="table-th">عدد اللبن</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {heapStats.latest.map((heap) => (
+                    <tr key={heap.id} className="border-t border-slate-100">
+                      <td className="table-td font-bold">
+                        <Link href={`/heaps/${heap.id}`}>
+                          {heap.pileName || "-"}
+                        </Link>
+                      </td>
+                      <td className="table-td">{heap.cropType || "غير معلوم"}</td>
+                      <td className="table-td">{heap.farmName || "-"}</td>
+                      <td className="table-td">{heap.sprinklerName || "-"}</td>
+                      <td className="table-td">
+                        {heap.bricksCount ? heap.bricksCount : "غير محدد"}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {heapStats.latest.length === 0 && (
+                    <tr>
+                      <td className="table-td text-center" colSpan="5">
+                        لا توجد أكوام
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="page-card mt-4 overflow-x-auto">
+              <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
+
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="table-th">الأصل</th>
+                    <th className="table-th">التصنيف</th>
+                    <th className="table-th">النوع</th>
+                    <th className="table-th">المكان</th>
+                    <th className="table-th">نوع المكان</th>
+                    <th className="table-th">الحالة</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {assets.map((asset) => (
+                    <tr key={asset.id} className="border-t border-slate-100">
+                      <td className="table-td font-bold">
+                        <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
+                      </td>
+                      <td className="table-td">
+                        <span className="badge bg-purple-50 text-purple-700">
+                          {getAssetCategoryLabel(asset.category)}
+                        </span>
+                      </td>
+                      <td className="table-td">{getAssetTypeName(asset)}</td>
+                      <td className="table-td">{getPlaceName(asset)}</td>
+                      <td className="table-td">
+                        {getPlaceTypeLabel(asset.placeType)}
+                      </td>
+                      <td className="table-td">
+                        <Link
+                          href={`/assets?status=${asset.status}`}
+                          className={`badge ${badgeClass(asset.status)}`}
+                        >
+                          {asset.status}
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {assets.length === 0 && (
+                    <tr>
+                      <td className="table-td text-center" colSpan="6">
+                        لا توجد أصول
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </Layout>
     </ProtectedRoute>
   );
