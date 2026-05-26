@@ -558,7 +558,7 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
   }
 
   .tractor-track {
-    bottom: 246px;
+    bottom: 225px;
     height: 120px;
   }
 
@@ -616,7 +616,7 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
   }
 
   .hill {
-    height: 230px;
+    height: 265px;
   }
 
   .loading-card {
