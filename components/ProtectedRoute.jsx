@@ -23,9 +23,48 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
         className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-b from-sky-100 via-lime-50 to-green-200 px-6"
       >
         <style jsx>{`
-          .scene {
+          .loader-wrap {
             position: relative;
             width: min(760px, 95vw);
+            padding-top: 90px;
+          }
+
+          .outer-sun {
+            position: absolute;
+            left: 18px;
+            top: 0;
+            z-index: 20;
+            width: 92px;
+            height: 92px;
+            border-radius: 50%;
+            background: radial-gradient(
+              circle at 35% 30%,
+              #fff7ad 0 15%,
+              #facc15 45%,
+              #f59e0b 100%
+            );
+            box-shadow:
+              0 0 70px rgba(250, 204, 21, 0.72),
+              inset -10px -12px 20px rgba(180, 83, 9, 0.18),
+              inset 10px 10px 18px rgba(255, 255, 255, 0.42);
+          }
+
+          .outer-sun::after {
+            content: "";
+            position: absolute;
+            inset: -20px;
+            border-radius: 50%;
+            background: radial-gradient(
+              circle,
+              rgba(250, 204, 21, 0.25),
+              transparent 68%
+            );
+            animation: sunPulse 2.8s ease-in-out infinite;
+          }
+
+          .scene {
+            position: relative;
+            width: 100%;
             height: 430px;
             overflow: hidden;
             border-radius: 42px;
@@ -40,35 +79,10 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
               inset 0 1px 0 rgba(255, 255, 255, 0.9);
           }
 
-          .sun {
-            position: absolute;
-            left: 28px;
-            top: 24px;
-            z-index: 1;
-            width: 76px;
-            height: 76px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, #fff7ad 0 15%, #facc15 45%, #f59e0b 100%);
-            box-shadow: 0 0 55px rgba(250, 204, 21, 0.65);
-            }
-
-          .sun::after {
-            content: "";
-            position: absolute;
-            inset: -18px;
-            border-radius: 50%;
-            background: radial-gradient(
-              circle,
-              rgba(250, 204, 21, 0.25),
-              transparent 68%
-            );
-            animation: sunPulse 2.8s ease-in-out infinite;
-          }
-
           .cloud {
             position: absolute;
-            top: 78px;
-            left: 180px;
+            top: 58px;
+            left: 150px;
             width: 125px;
             height: 38px;
             border-radius: 999px;
@@ -101,7 +115,21 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
           }
 
           .sign-board {
-            top: 70px;
+            position: absolute;
+            top: 50px;
+            right: 44px;
+            z-index: 8;
+            width: 285px;
+            padding: 20px 16px;
+            text-align: center;
+            border: 5px solid #7c4a20;
+            border-radius: 26px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a 55%, #fbbf24);
+            transform: perspective(700px) rotateY(-7deg) rotateX(2deg);
+            box-shadow:
+              0 24px 36px rgba(120, 53, 15, 0.28),
+              inset 0 3px 0 rgba(255, 255, 255, 0.55),
+              inset 0 -8px 15px rgba(146, 64, 14, 0.14);
           }
 
           .sign-board::before,
@@ -286,6 +314,17 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
           }
 
           @media (max-width: 640px) {
+            .loader-wrap {
+              padding-top: 82px;
+            }
+
+            .outer-sun {
+              left: 20px;
+              top: 4px;
+              width: 72px;
+              height: 72px;
+            }
+
             .scene {
               height: 420px;
               border-radius: 30px;
@@ -293,16 +332,9 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
 
             .sign-board {
               right: 50%;
-              top: 32px;
+              top: 42px;
               width: 260px;
               transform: translateX(50%) perspective(700px) rotateX(2deg);
-            }
-
-            .sun {
-              left: 24px;
-              top: 24px;
-              width: 68px;
-              height: 68px;
             }
 
             .cloud {
@@ -315,36 +347,39 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
           }
         `}</style>
 
-        <div className="scene">
-          <div className="sun" />
-          <div className="cloud" />
+        <div className="loader-wrap">
+          <div className="outer-sun" />
 
-          <div className="sign-board">
-            <p className="sign-title text-xl font-black text-green-950">
-              معدات مزارع السنبلة
-            </p>
-          </div>
+          <div className="scene">
+            <div className="cloud" />
 
-          <div className="tractor-track">
-            <div className="tractor">
-              <FontAwesomeIcon icon={faTractor} />
+            <div className="sign-board">
+              <p className="sign-title text-xl font-black text-green-950">
+                معدات مزارع السنبلة
+              </p>
             </div>
 
-            <span className="dust one" />
-            <span className="dust two" />
-            <span className="dust three" />
-          </div>
+            <div className="tractor-track">
+              <div className="tractor">
+                <FontAwesomeIcon icon={faTractor} />
+              </div>
 
-          <div className="grass-ground" />
+              <span className="dust one" />
+              <span className="dust two" />
+              <span className="dust three" />
+            </div>
 
-          <div className="loading-text">
-            <div className="loading-pill">
-              <p className="text-lg font-black text-green-950">
-                جاري تحميل معدات مزارع السنبلة...
-              </p>
-              <p className="mt-1 text-xs font-bold text-slate-600">
-                يتم تجهيز البيانات والتحقق من الصلاحيات
-              </p>
+            <div className="grass-ground" />
+
+            <div className="loading-text">
+              <div className="loading-pill">
+                <p className="text-lg font-black text-green-950">
+                  جاري تحميل معدات مزارع السنبلة...
+                </p>
+                <p className="mt-1 text-xs font-bold text-slate-600">
+                  يتم تجهيز البيانات والتحقق من الصلاحيات
+                </p>
+              </div>
             </div>
           </div>
         </div>
