@@ -13,6 +13,7 @@ import { db } from "../lib/firebase";
 
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
+import AppLoader from "../components/AppLoader";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
@@ -164,9 +165,8 @@ export default function Dashboard() {
 
   const invalidTypesCount = useMemo(
     () =>
-      assets.filter((asset) =>
-        isAssetWithoutValidType(asset, validTypeIds)
-      ).length,
+      assets.filter((asset) => isAssetWithoutValidType(asset, validTypeIds))
+        .length,
     [assets, validTypeIds]
   );
 
@@ -409,163 +409,176 @@ export default function Dashboard() {
   ];
 
   return (
-    <ProtectedRoute pageLoading={initialLoading}>
+    <ProtectedRoute>
       <Layout title="لوحة التحكم">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
-          {cards.map((card) => (
-            <StatCard key={card.title} {...card} />
-          ))}
-        </div>
-
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          <MiniTable
-            title="الأكوام حسب النوع / عدد اللبن"
-            items={heapStats.byCropType}
+        {initialLoading ? (
+          <AppLoader
+            title="جاري تحميل لوحة التحكم..."
+            subtitle="يتم تجهيز الإحصائيات والبيانات"
           />
-          <MiniTable title="حسب نوع المعدة" items={byType} />
-          <MiniTable title="حسب التصنيف" items={byCategory} />
-          <MiniTable title="حسب المزرعة" items={byFarm} />
-          <MiniTable title="حسب الكِبرة" items={byKubra} />
-          <MiniTable title="حسب العامل" items={byWorker} />
-        </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+              {cards.map((card) => (
+                <StatCard key={card.title} {...card} />
+              ))}
+            </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          <div className="page-card overflow-x-auto">
-            <h3 className="p-5 pb-2 font-black">آخر الأكوام</h3>
+            <div className="mt-6 grid gap-4 xl:grid-cols-2">
+              <MiniTable
+                title="الأكوام حسب النوع / عدد اللبن"
+                items={heapStats.byCropType}
+              />
+              <MiniTable title="حسب نوع المعدة" items={byType} />
+              <MiniTable title="حسب التصنيف" items={byCategory} />
+              <MiniTable title="حسب المزرعة" items={byFarm} />
+              <MiniTable title="حسب الكِبرة" items={byKubra} />
+              <MiniTable title="حسب العامل" items={byWorker} />
+            </div>
 
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="table-th">الكوم</th>
-                  <th className="table-th">النوع</th>
-                  <th className="table-th">المزرعة</th>
-                  <th className="table-th">عدد اللبن</th>
-                </tr>
-              </thead>
+            <div className="mt-6 grid gap-4 xl:grid-cols-2">
+              <div className="page-card overflow-x-auto">
+                <h3 className="p-5 pb-2 font-black">آخر الأكوام</h3>
 
-              <tbody>
-                {heapStats.latest.map((heap) => (
-                  <tr
-                    key={heap.id}
-                    className="clickable-row border-t border-slate-100"
-                  >
-                    <td className="table-td font-bold">
-                      <Link href={`/heaps/${heap.id}`}>
-                        {heap.pileName || "-"}
-                      </Link>
-                    </td>
-                    <td className="table-td">{heap.cropType || "-"}</td>
-                    <td className="table-td">{heap.farmName || "-"}</td>
-                    <td className="table-td">{heap.bricksCount || 0}</td>
-                  </tr>
-                ))}
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="table-th">الكوم</th>
+                      <th className="table-th">النوع</th>
+                      <th className="table-th">المزرعة</th>
+                      <th className="table-th">عدد اللبن</th>
+                    </tr>
+                  </thead>
 
-                {heapStats.latest.length === 0 && (
-                  <tr>
-                    <td className="table-td text-center" colSpan="4">
-                      لا توجد أكوام
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="page-card overflow-x-auto">
-            <h3 className="p-5 pb-2 font-black">آخر الأصول المسجلة</h3>
-
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="table-th">الأصل</th>
-                  <th className="table-th">التصنيف</th>
-                  <th className="table-th">النوع</th>
-                  <th className="table-th">المكان</th>
-                  <th className="table-th">الحالة</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {assets.slice(0, 8).map((asset) => (
-                  <tr
-                    key={asset.id}
-                    className="clickable-row border-t border-slate-100"
-                  >
-                    <td className="table-td font-bold">
-                      <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
-                    </td>
-                    <td className="table-td">
-                      <span className="badge bg-purple-50 text-purple-700">
-                        {getAssetCategoryLabel(asset.category)}
-                      </span>
-                    </td>
-                    <td className="table-td">{getAssetTypeName(asset)}</td>
-                    <td className="table-td">{getPlaceName(asset)}</td>
-                    <td className="table-td">
-                      <Link
-                        href={`/assets?status=${asset.status}`}
-                        className={`badge ${badgeClass(asset.status)}`}
+                  <tbody>
+                    {heapStats.latest.map((heap) => (
+                      <tr
+                        key={heap.id}
+                        className="clickable-row border-t border-slate-100"
                       >
-                        {asset.status}
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        <td className="table-td font-bold">
+                          <Link href={`/heaps/${heap.id}`}>
+                            {heap.pileName || "-"}
+                          </Link>
+                        </td>
+                        <td className="table-td">{heap.cropType || "-"}</td>
+                        <td className="table-td">{heap.farmName || "-"}</td>
+                        <td className="table-td">{heap.bricksCount || 0}</td>
+                      </tr>
+                    ))}
 
-          <div className="page-card overflow-x-auto xl:col-span-2">
-            <h3 className="p-5 pb-2 font-black">آخر الحركات</h3>
+                    {heapStats.latest.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="4">
+                          لا توجد أكوام
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="table-th">الأصل</th>
-                  <th className="table-th">من</th>
-                  <th className="table-th">إلى</th>
-                  <th className="table-th">عرض</th>
-                </tr>
-              </thead>
+              <div className="page-card overflow-x-auto">
+                <h3 className="p-5 pb-2 font-black">آخر الأصول المسجلة</h3>
 
-              <tbody>
-                {movements.map((movement) => (
-                  <tr
-                    key={movement.id}
-                    className="clickable-row border-t border-slate-100"
-                  >
-                    <td className="table-td font-bold">
-                      {movement.assetName || "-"}
-                    </td>
-                    <td className="table-td">{movement.fromPlaceName || "-"}</td>
-                    <td className="table-td">{movement.toPlaceName || "-"}</td>
-                    <td className="table-td">
-                      {movement.assetId ? (
-                        <Link
-                          className="btn-secondary !py-2"
-                          href={`/assets/${movement.assetId}`}
-                        >
-                          <FontAwesomeIcon icon={faArrowUpRightDots} />
-                          التفاصيل
-                        </Link>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="table-th">الأصل</th>
+                      <th className="table-th">التصنيف</th>
+                      <th className="table-th">النوع</th>
+                      <th className="table-th">المكان</th>
+                      <th className="table-th">الحالة</th>
+                    </tr>
+                  </thead>
 
-                {movements.length === 0 && (
-                  <tr>
-                    <td className="table-td text-center" colSpan="4">
-                      لا توجد حركات
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  <tbody>
+                    {assets.slice(0, 8).map((asset) => (
+                      <tr
+                        key={asset.id}
+                        className="clickable-row border-t border-slate-100"
+                      >
+                        <td className="table-td font-bold">
+                          <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
+                        </td>
+                        <td className="table-td">
+                          <span className="badge bg-purple-50 text-purple-700">
+                            {getAssetCategoryLabel(asset.category)}
+                          </span>
+                        </td>
+                        <td className="table-td">{getAssetTypeName(asset)}</td>
+                        <td className="table-td">{getPlaceName(asset)}</td>
+                        <td className="table-td">
+                          <Link
+                            href={`/assets?status=${asset.status}`}
+                            className={`badge ${badgeClass(asset.status)}`}
+                          >
+                            {asset.status}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="page-card overflow-x-auto xl:col-span-2">
+                <h3 className="p-5 pb-2 font-black">آخر الحركات</h3>
+
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="table-th">الأصل</th>
+                      <th className="table-th">من</th>
+                      <th className="table-th">إلى</th>
+                      <th className="table-th">عرض</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {movements.map((movement) => (
+                      <tr
+                        key={movement.id}
+                        className="clickable-row border-t border-slate-100"
+                      >
+                        <td className="table-td font-bold">
+                          {movement.assetName || "-"}
+                        </td>
+                        <td className="table-td">
+                          {movement.fromPlaceName || "-"}
+                        </td>
+                        <td className="table-td">
+                          {movement.toPlaceName || "-"}
+                        </td>
+                        <td className="table-td">
+                          {movement.assetId ? (
+                            <Link
+                              className="btn-secondary !py-2"
+                              href={`/assets/${movement.assetId}`}
+                            >
+                              <FontAwesomeIcon icon={faArrowUpRightDots} />
+                              التفاصيل
+                            </Link>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {movements.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="4">
+                          لا توجد حركات
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </Layout>
     </ProtectedRoute>
   );
