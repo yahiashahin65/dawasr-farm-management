@@ -42,24 +42,15 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
 
           .sun {
             position: absolute;
-            left: 44px;
-            top: 26px;
-            z-index: 3;
-            width: 92px;
-            height: 92px;
+            left: 28px;
+            top: 24px;
+            z-index: 1;
+            width: 76px;
+            height: 76px;
             border-radius: 50%;
-            background:
-              radial-gradient(
-                circle at 35% 30%,
-                #fff7ad 0 16%,
-                #facc15 38%,
-                #f59e0b 100%
-              );
-            box-shadow:
-              0 0 80px rgba(250, 204, 21, 0.75),
-              inset -10px -12px 20px rgba(180, 83, 9, 0.18),
-              inset 10px 10px 18px rgba(255, 255, 255, 0.42);
-          }
+            background: radial-gradient(circle at 35% 30%, #fff7ad 0 15%, #facc15 45%, #f59e0b 100%);
+            box-shadow: 0 0 55px rgba(250, 204, 21, 0.65);
+            }
 
           .sun::after {
             content: "";
@@ -110,21 +101,7 @@ export default function ProtectedRoute({ children, pageLoading = false }) {
           }
 
           .sign-board {
-            position: absolute;
-            top: 52px;
-            right: 44px;
-            z-index: 8;
-            width: 285px;
-            padding: 20px 16px;
-            text-align: center;
-            border: 5px solid #7c4a20;
-            border-radius: 26px;
-            background: linear-gradient(135deg, #fef3c7, #fde68a 55%, #fbbf24);
-            transform: perspective(700px) rotateY(-7deg) rotateX(2deg);
-            box-shadow:
-              0 24px 36px rgba(120, 53, 15, 0.28),
-              inset 0 3px 0 rgba(255, 255, 255, 0.55),
-              inset 0 -8px 15px rgba(146, 64, 14, 0.14);
+            top: 70px;
           }
 
           .sign-board::before,
