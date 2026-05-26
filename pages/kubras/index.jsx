@@ -10,11 +10,16 @@ import {
   limit,
   startAfter,
 } from "firebase/firestore";
+
 import { db } from "../../lib/firebase";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
+
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
 import {
   faPlus,
   faMagnifyingGlass,
@@ -120,109 +125,125 @@ export default function Kubras() {
   };
 
   return (
-    <ProtectedRoute pageLoading={initialLoading}>
+    <ProtectedRoute>
       <Layout title="الكِبر">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="page-card flex flex-1 items-center gap-2 p-3">
-            <FontAwesomeIcon
-              icon={faMagnifyingGlass}
-              className="text-slate-400"
-            />
+        {initialLoading ? (
+          <AppLoader
+            variant="compact"
+            title="جاري تحميل الكِبر..."
+            subtitle="يتم تجهيز بيانات الكِبر"
+          />
+        ) : (
+          <>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="page-card flex flex-1 items-center gap-2 p-3">
+                <FontAwesomeIcon
+                  icon={faMagnifyingGlass}
+                  className="text-slate-400"
+                />
 
-            <input
-              className="w-full bg-transparent p-2 outline-none"
-              placeholder="بحث باسم الكِبرة أو الملاحظات..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <input
+                  className="w-full bg-transparent p-2 outline-none"
+                  placeholder="بحث باسم الكِبرة أو الملاحظات..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
 
-          {canManage && (
-            <Link href="/kubras/add" className="btn-primary">
-              <FontAwesomeIcon icon={faPlus} />
-              إضافة كِبرة
-            </Link>
-          )}
-        </div>
-
-        {pageLoading && (
-          <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
-            جاري تحميل البيانات...
-          </div>
-        )}
-
-        <div className="mb-3 text-sm font-bold text-slate-500">
-          المعروض في هذه الصفحة: {filteredItems.length}
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((kubra) => (
-            <div key={kubra.id} className="page-card p-5">
-              <h3 className="text-lg font-black">{kubra.name}</h3>
-
-              <p className="mt-2 text-sm text-slate-500">
-                {kubra.notes || "-"}
-              </p>
-
-              <div className="mt-4 flex gap-2">
-                <Link className="btn-secondary !p-2" href={`/kubras/${kubra.id}`}>
-                  <FontAwesomeIcon icon={faEye} />
+              {canManage && (
+                <Link href="/kubras/add" className="btn-primary">
+                  <FontAwesomeIcon icon={faPlus} />
+                  إضافة كِبرة
                 </Link>
+              )}
+            </div>
 
-                {canManage && (
-                  <>
+            {pageLoading && (
+              <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
+                جاري تحميل البيانات...
+              </div>
+            )}
+
+            <div className="mb-3 text-sm font-bold text-slate-500">
+              المعروض في هذه الصفحة: {filteredItems.length}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredItems.map((kubra) => (
+                <div key={kubra.id} className="page-card p-5">
+                  <h3 className="text-lg font-black">{kubra.name}</h3>
+
+                  <p className="mt-2 text-sm text-slate-500">
+                    {kubra.notes || "-"}
+                  </p>
+
+                  <div className="mt-4 flex gap-2">
                     <Link
                       className="btn-secondary !p-2"
-                      href={`/kubras/edit/${kubra.id}`}
+                      href={`/kubras/${kubra.id}`}
                     >
-                      <FontAwesomeIcon icon={faPen} />
+                      <FontAwesomeIcon icon={faEye} />
                     </Link>
 
-                    <button
-                      className="btn-danger !p-2"
-                      onClick={() => remove(kubra.id)}
-                    >
-                      <FontAwesomeIcon icon={faTrash} />
-                    </button>
-                  </>
-                )}
-              </div>
+                    {canManage && (
+                      <>
+                        <Link
+                          className="btn-secondary !p-2"
+                          href={`/kubras/edit/${kubra.id}`}
+                        >
+                          <FontAwesomeIcon icon={faPen} />
+                        </Link>
+
+                        <button
+                          className="btn-danger !p-2"
+                          onClick={() => remove(kubra.id)}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {filteredItems.length === 0 && (
+                <div className="page-card p-5 text-center font-bold text-slate-500 sm:col-span-2 xl:col-span-3">
+                  لا توجد كِبر مطابقة
+                </div>
+              )}
             </div>
-          ))}
 
-          {filteredItems.length === 0 && (
-            <div className="page-card p-5 text-center font-bold text-slate-500 sm:col-span-2 xl:col-span-3">
-              لا توجد كِبر مطابقة
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                disabled={currentPage === 1 || pageLoading}
+                onClick={() =>
+                  loadKubrasPage(
+                    currentPage - 1,
+                    pageCursors[currentPage - 1] || null
+                  )
+                }
+                className="btn-secondary disabled:opacity-50"
+              >
+                السابق
+              </button>
+
+              <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+
+              <button
+                disabled={!hasNextPage || pageLoading}
+                onClick={() =>
+                  loadKubrasPage(
+                    currentPage + 1,
+                    pageCursors[currentPage + 1]
+                  )
+                }
+                className="btn-secondary disabled:opacity-50"
+              >
+                التالي
+              </button>
             </div>
-          )}
-        </div>
-
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <button
-            disabled={currentPage === 1 || pageLoading}
-            onClick={() =>
-              loadKubrasPage(
-                currentPage - 1,
-                pageCursors[currentPage - 1] || null
-              )
-            }
-            className="btn-secondary disabled:opacity-50"
-          >
-            السابق
-          </button>
-
-          <span className="font-bold text-slate-700">صفحة {currentPage}</span>
-
-          <button
-            disabled={!hasNextPage || pageLoading}
-            onClick={() =>
-              loadKubrasPage(currentPage + 1, pageCursors[currentPage + 1])
-            }
-            className="btn-secondary disabled:opacity-50"
-          >
-            التالي
-          </button>
-        </div>
+          </>
+        )}
       </Layout>
     </ProtectedRoute>
   );
