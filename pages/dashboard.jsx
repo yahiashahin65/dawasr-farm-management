@@ -413,6 +413,7 @@ export default function Dashboard() {
       <Layout title="لوحة التحكم">
         {initialLoading ? (
           <AppLoader
+            variant="compact"
             title="جاري تحميل لوحة التحكم..."
             subtitle="يتم تجهيز الإحصائيات والبيانات"
           />
