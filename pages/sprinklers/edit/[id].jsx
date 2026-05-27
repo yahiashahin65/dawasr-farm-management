@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import Link from "next/link";
 import {
   collection,
   doc,
@@ -11,57 +10,41 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../../lib/firebase";
-import { sprinklersSeed } from "../../../lib/sprinklersSeed";
 
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
 import useUserRole from "../../../hooks/useUserRole";
 
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowRight, faFloppyDisk } from "@fortawesome/free-solid-svg-icons";
-
-const initialForm = {
-  name: "",
-  machine: "",
-  towersCount: "",
-  gear: "",
-  sequence: "",
-  farmName: "",
-  movement: "",
-  cropType: "",
-  hectareNumber: "",
-  workerId: "",
-  workerName: "",
-  workerPhone: "",
-  imageUrl: "",
-};
-
-const uniqueOptions = (items, key) => {
-  return [...new Set(items.map((item) => item[key]).filter(Boolean))].sort();
-};
-
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-black text-slate-700">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
+const MOVEMENT_OPTIONS = [
+  "دائري",
+  "نصف دائري",
+  "ثلاث أرباع دائري",
+  "نصين",
+];
 
 export default function EditSprinkler() {
   const router = useRouter();
   const { id } = router.query;
   const { canManage } = useUserRole();
 
-  const [form, setForm] = useState(initialForm);
-  const [sprinklers, setSprinklers] = useState([]);
-  const [workers, setWorkers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const [farms, setFarms] = useState([]);
+  const [workers, setWorkers] = useState([]);
+
+  const [form, setForm] = useState({
+    name: "",
+    farmName: "",
+    machineName: "",
+    gearName: "",
+    cropType: "",
+    movementType: "",
+    workerId: "",
+    workerName: "",
+    imageUrl: "",
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -70,25 +53,34 @@ export default function EditSprinkler() {
       setInitialLoading(true);
 
       try {
-        const [sprinklerSnap, sprinklersSnap, workersSnap] = await Promise.all([
+        const [sprinklerSnap, farmsSnap, workersSnap] = await Promise.all([
           getDoc(doc(db, "sprinklers", id)),
-          getDocs(collection(db, "sprinklers")),
+          getDocs(collection(db, "farms")),
           getDocs(collection(db, "workers")),
         ]);
 
-        if (sprinklerSnap.exists()) {
-          setForm({
-            ...initialForm,
-            ...sprinklerSnap.data(),
-            imageUrl: sprinklerSnap.data().imageUrl || "",
-          });
-        } else {
+        if (!sprinklerSnap.exists()) {
           alert("الرشاش غير موجود");
           router.push("/sprinklers");
+          return;
         }
 
-        setSprinklers(
-          sprinklersSnap.docs.map((d) => ({
+        const data = sprinklerSnap.data();
+
+        setForm({
+          name: data.name || data.sprinklerName || "",
+          farmName: data.farmName || "",
+          machineName: data.machineName || data.machine || "",
+          gearName: data.gearName || data.gear || "",
+          cropType: data.cropType || "",
+          movementType: data.movementType || "",
+          workerId: data.workerId || "",
+          workerName: data.workerName || "",
+          imageUrl: data.imageUrl || "",
+        });
+
+        setFarms(
+          farmsSnap.docs.map((d) => ({
             id: d.id,
             ...d.data(),
           }))
@@ -100,9 +92,6 @@ export default function EditSprinkler() {
             ...d.data(),
           }))
         );
-      } catch (error) {
-        console.error(error);
-        alert("حدث خطأ أثناء تحميل بيانات الرشاش");
       } finally {
         setInitialLoading(false);
       }
@@ -111,15 +100,20 @@ export default function EditSprinkler() {
     loadData();
   }, [id, router]);
 
-  const optionsSource = useMemo(() => {
-    return [...sprinklersSeed, ...sprinklers, form];
-  }, [sprinklers, form]);
+  const machineOptions = useMemo(
+    () => ["مكينة 1", "مكينة 2", "مكينة 3", "مكينة 4"],
+    []
+  );
 
-  const farmOptions = uniqueOptions(optionsSource, "farmName");
-  const machineOptions = uniqueOptions(optionsSource, "machine");
-  const gearOptions = uniqueOptions(optionsSource, "gear");
-  const movementOptions = uniqueOptions(optionsSource, "movement");
-  const cropOptions = uniqueOptions(optionsSource, "cropType");
+  const gearOptions = useMemo(
+    () => ["جير 1", "جير 2", "جير 3", "جير 4"],
+    []
+  );
+
+  const cropOptions = useMemo(
+    () => ["برسيم", "رودس", "ذرة", "قمح", "شعير", "غير محدد"],
+    []
+  );
 
   const updateField = (key, value) => {
     setForm((prev) => ({
@@ -128,37 +122,82 @@ export default function EditSprinkler() {
     }));
   };
 
-
-  const updateWorker = (workerId) => {
-    const selectedWorker = workers.find((worker) => worker.id === workerId);
+  const onWorkerChange = (workerId) => {
+    const worker = workers.find((item) => item.id === workerId);
 
     setForm((prev) => ({
       ...prev,
       workerId,
-      workerName: selectedWorker?.name || "",
-      workerPhone: selectedWorker?.phone || "",
+      workerName: worker?.name || "",
     }));
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const onFarmChange = (farmName) => {
+    setForm((prev) => ({
+      ...prev,
+      farmName,
+    }));
+  };
 
-    if (!canManage || !id) return;
+  const uploadImage = async (file) => {
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/upload-media", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      const imageUrl =
+        result.url ||
+        result.imageUrl ||
+        result.data?.url ||
+        result.data?.imageUrl ||
+        "";
+
+      if (!imageUrl) {
+        alert("لم يتم استلام رابط الصورة");
+        return;
+      }
+
+      updateField("imageUrl", imageUrl);
+    } catch (error) {
+      console.error(error);
+      alert("حدث خطأ أثناء رفع الصورة");
+    }
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    if (!canManage) return;
 
     setSaving(true);
 
     try {
       await updateDoc(doc(db, "sprinklers", id), {
-        ...form,
+        name: form.name,
+        sprinklerName: form.name,
+        farmName: form.farmName,
+        machineName: form.machineName,
+        gearName: form.gearName,
+        cropType: form.cropType,
+        movementType: form.movementType,
+        workerId: form.workerId,
+        workerName: form.workerName,
         imageUrl: form.imageUrl || "",
         updatedAt: serverTimestamp(),
       });
 
-      alert("تم تعديل الرشاش بنجاح");
       router.push(`/sprinklers/${id}`);
     } catch (error) {
       console.error(error);
-      alert("حدث خطأ أثناء تعديل الرشاش");
+      alert("حدث خطأ أثناء حفظ البيانات");
     } finally {
       setSaving(false);
     }
@@ -171,166 +210,164 @@ export default function EditSprinkler() {
           <AppLoader
             variant="compact"
             title="جاري تحميل بيانات الرشاش..."
-            subtitle="يتم تجهيز نموذج التعديل"
+            subtitle="يتم تجهيز بيانات التعديل"
           />
-        ) : !canManage ? (
-          <div className="page-card p-5 text-center font-bold text-slate-500">
-            لا تملك صلاحية تعديل الرشاشات
-          </div>
         ) : (
-          <>
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <Link href={`/sprinklers/${id}`} className="btn-secondary">
-                <FontAwesomeIcon icon={faArrowRight} />
-                رجوع للتفاصيل
-              </Link>
-            </div>
-
-            <form onSubmit={submit} className="page-card p-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="اسم الرشاش">
+          <form onSubmit={submit} className="grid gap-5 lg:grid-cols-3">
+            <div className="page-card p-5 lg:col-span-2">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="form-label">اسم الرشاش</label>
                   <input
                     className="form-input"
                     value={form.name}
                     onChange={(e) => updateField("name", e.target.value)}
-                    required
                   />
-                </Field>
+                </div>
 
-                <Field label="المكينة">
-                  <select
-                    className="form-input"
-                    value={form.machine}
-                    onChange={(e) => updateField("machine", e.target.value)}
-                  >
-                    <option value="">اختر المكينة</option>
-                    {machineOptions.map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="عدد الأبراج">
-                  <input
-                    className="form-input"
-                    value={form.towersCount}
-                    onChange={(e) => updateField("towersCount", e.target.value)}
-                  />
-                </Field>
-
-                <Field label="الجير">
-                  <select
-                    className="form-input"
-                    value={form.gear}
-                    onChange={(e) => updateField("gear", e.target.value)}
-                  >
-                    <option value="">اختر الجير</option>
-                    {gearOptions.map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="التسلسل">
-                  <input
-                    className="form-input"
-                    value={form.sequence}
-                    onChange={(e) => updateField("sequence", e.target.value)}
-                  />
-                </Field>
-
-                <Field label="المزرعة">
+                <div>
+                  <label className="form-label">المزرعة</label>
                   <select
                     className="form-input"
                     value={form.farmName}
-                    onChange={(e) => updateField("farmName", e.target.value)}
+                    onChange={(e) => onFarmChange(e.target.value)}
                   >
                     <option value="">اختر المزرعة</option>
-                    {farmOptions.map((item) => (
-                      <option key={item} value={item}>{item}</option>
+                    {farms.map((farm) => (
+                      <option key={farm.id} value={farm.name}>
+                        {farm.name}
+                      </option>
                     ))}
                   </select>
-                </Field>
+                </div>
 
-                <Field label="حركة الرشاش">
-                  <select
+                <div>
+                  <label className="form-label">المكينة</label>
+                  <input
+                    list="machine-options"
                     className="form-input"
-                    value={form.movement}
-                    onChange={(e) => updateField("movement", e.target.value)}
-                  >
-                    <option value="">اختر حركة الرشاش</option>
-                    {movementOptions.map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
-                </Field>
+                    value={form.machineName}
+                    onChange={(e) => updateField("machineName", e.target.value)}
+                  />
 
-                <Field label="نوع المحصول">
-                  <select
+                  <datalist id="machine-options">
+                    {machineOptions.map((item) => (
+                      <option key={item} value={item} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="form-label">الجير</label>
+                  <input
+                    list="gear-options"
+                    className="form-input"
+                    value={form.gearName}
+                    onChange={(e) => updateField("gearName", e.target.value)}
+                  />
+
+                  <datalist id="gear-options">
+                    {gearOptions.map((item) => (
+                      <option key={item} value={item} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="form-label">نوع المحصول</label>
+                  <input
+                    list="crop-options"
                     className="form-input"
                     value={form.cropType}
                     onChange={(e) => updateField("cropType", e.target.value)}
-                  >
-                    <option value="">اختر نوع المحصول</option>
+                  />
+
+                  <datalist id="crop-options">
                     {cropOptions.map((item) => (
-                      <option key={item} value={item}>{item}</option>
+                      <option key={item} value={item} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="form-label">حركة الرشاش</label>
+                  <select
+                    className="form-input"
+                    value={form.movementType}
+                    onChange={(e) =>
+                      updateField("movementType", e.target.value)
+                    }
+                  >
+                    <option value="">اختر الحركة</option>
+                    {MOVEMENT_OPTIONS.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
                     ))}
                   </select>
-                </Field>
+                </div>
 
-                <Field label="رقم هكتار">
-                  <input
-                    className="form-input"
-                    value={form.hectareNumber}
-                    onChange={(e) => updateField("hectareNumber", e.target.value)}
-                  />
-                </Field>
-
-                <Field label="العامل">
+                <div className="md:col-span-2">
+                  <label className="form-label">العامل</label>
                   <select
                     className="form-input"
                     value={form.workerId}
-                    onChange={(e) => updateWorker(e.target.value)}
+                    onChange={(e) => onWorkerChange(e.target.value)}
                   >
-                    <option value="">اختر العامل من صفحة العمال</option>
+                    <option value="">بدون عامل</option>
                     {workers.map((worker) => (
                       <option key={worker.id} value={worker.id}>
                         {worker.name}
                       </option>
                     ))}
                   </select>
-                </Field>
+                </div>
+              </div>
+            </div>
 
-                <Field label="جوال العامل">
-                  <input
-                    className="form-input"
-                    value={form.workerPhone}
-                    readOnly
-                  />
-                </Field>
+            <div className="page-card p-5">
+              <label className="form-label">صورة الرشاش</label>
 
-                <Field label="رابط الصورة">
-                  <input
-                    className="form-input"
-                    placeholder="اتركه فارغًا لو مفيش صورة"
-                    value={form.imageUrl}
-                    onChange={(e) => updateField("imageUrl", e.target.value)}
+              <div className="mt-2 rounded-3xl border border-dashed border-slate-300 p-4 text-center">
+                {form.imageUrl ? (
+                  <img
+                    src={form.imageUrl}
+                    alt={form.name || "رشاش"}
+                    className="mx-auto h-48 w-full rounded-2xl object-cover"
                   />
-                </Field>
+                ) : (
+                  <div className="flex h-48 items-center justify-center rounded-2xl bg-slate-50 text-3xl font-black text-slate-300">
+                    -
+                  </div>
+                )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="form-input mt-4"
+                  onChange={(e) => uploadImage(e.target.files?.[0])}
+                />
               </div>
 
-              <div className="mt-6 flex justify-end gap-2">
-                <Link href={`/sprinklers/${id}`} className="btn-secondary">
-                  إلغاء
-                </Link>
-
-                <button type="submit" disabled={saving} className="btn-primary disabled:opacity-60">
-                  <FontAwesomeIcon icon={faFloppyDisk} />
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={saving || !canManage}
+                  className="btn-primary flex-1 disabled:opacity-50"
+                >
                   {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.push("/sprinklers")}
+                  className="btn-secondary"
+                >
+                  إلغاء
+                </button>
               </div>
-            </form>
-          </>
+            </div>
+          </form>
         )}
       </Layout>
     </ProtectedRoute>
