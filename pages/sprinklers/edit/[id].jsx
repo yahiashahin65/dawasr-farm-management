@@ -132,13 +132,6 @@ export default function EditSprinkler() {
     }));
   };
 
-  const onFarmChange = (farmName) => {
-    setForm((prev) => ({
-      ...prev,
-      farmName,
-    }));
-  };
-
   const uploadImage = async (file) => {
     if (!file) return;
 
@@ -222,6 +215,7 @@ export default function EditSprinkler() {
                     className="form-input"
                     value={form.name}
                     onChange={(e) => updateField("name", e.target.value)}
+                    required
                   />
                 </div>
 
@@ -230,7 +224,8 @@ export default function EditSprinkler() {
                   <select
                     className="form-input"
                     value={form.farmName}
-                    onChange={(e) => onFarmChange(e.target.value)}
+                    onChange={(e) => updateField("farmName", e.target.value)}
+                    required
                   >
                     <option value="">اختر المزرعة</option>
                     {farms.map((farm) => (
@@ -259,18 +254,18 @@ export default function EditSprinkler() {
 
                 <div>
                   <label className="form-label">الجير</label>
-                  <input
-                    list="gear-options"
+                  <select
                     className="form-input"
                     value={form.gearName}
                     onChange={(e) => updateField("gearName", e.target.value)}
-                  />
-
-                  <datalist id="gear-options">
+                  >
+                    <option value="">اختر الجير</option>
                     {gearOptions.map((item) => (
-                      <option key={item} value={item} />
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
                     ))}
-                  </datalist>
+                  </select>
                 </div>
 
                 <div>
@@ -294,9 +289,7 @@ export default function EditSprinkler() {
                   <select
                     className="form-input"
                     value={form.movementType}
-                    onChange={(e) =>
-                      updateField("movementType", e.target.value)
-                    }
+                    onChange={(e) => updateField("movementType", e.target.value)}
                   >
                     <option value="">اختر الحركة</option>
                     {MOVEMENT_OPTIONS.map((item) => (
