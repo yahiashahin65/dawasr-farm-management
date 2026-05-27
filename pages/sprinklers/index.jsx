@@ -223,7 +223,7 @@ export default function Sprinklers() {
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">عدد المكاين</p>
+                <p className="text-sm font-bold text-slate-500">عدد انواع المكاين</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalMachines}
                 </h3>
