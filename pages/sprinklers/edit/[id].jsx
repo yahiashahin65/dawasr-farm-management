@@ -23,6 +23,27 @@ const MOVEMENT_OPTIONS = [
   "نصين",
 ];
 
+const normalizeGear = (value) => {
+  const text = String(value || "").replace(/\s/g, "");
+
+  if (text.includes("10/11")) {
+    if (text.includes("400")) return "10/11 (400)";
+    if (text.includes("425")) return "10/11 (425)";
+    return "10/11";
+  }
+
+  if (text.includes("5/6")) return "5/6 (350)";
+
+  if (text.includes("1/1")) {
+    if (text.includes("300")) return "1/1 (300)";
+    if (text.includes("350")) return "1/1 (350)";
+    if (text.includes("425")) return "1/1 (425)";
+    return "1/1";
+  }
+
+  return value || "";
+};
+
 export default function EditSprinkler() {
   const router = useRouter();
   const { id } = router.query;
@@ -33,6 +54,7 @@ export default function EditSprinkler() {
 
   const [farms, setFarms] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [items, setItems] = useState([]);
 
   const [form, setForm] = useState({
     name: "",
@@ -53,11 +75,13 @@ export default function EditSprinkler() {
       setInitialLoading(true);
 
       try {
-        const [sprinklerSnap, farmsSnap, workersSnap] = await Promise.all([
-          getDoc(doc(db, "sprinklers", id)),
-          getDocs(collection(db, "farms")),
-          getDocs(collection(db, "workers")),
-        ]);
+        const [sprinklerSnap, farmsSnap, workersSnap, sprinklersSnap] =
+          await Promise.all([
+            getDoc(doc(db, "sprinklers", id)),
+            getDocs(collection(db, "farms")),
+            getDocs(collection(db, "workers")),
+            getDocs(collection(db, "sprinklers")),
+          ]);
 
         if (!sprinklerSnap.exists()) {
           alert("الرشاش غير موجود");
@@ -71,7 +95,7 @@ export default function EditSprinkler() {
           name: data.name || data.sprinklerName || "",
           farmName: data.farmName || "",
           machineName: data.machineName || data.machine || "",
-          gearName: data.gearName || data.gear || "",
+          gearName: normalizeGear(data.gearName || data.gear || ""),
           cropType: data.cropType || "",
           movementType: data.movementType || "",
           workerId: data.workerId || "",
@@ -92,6 +116,13 @@ export default function EditSprinkler() {
             ...d.data(),
           }))
         );
+
+        setItems(
+          sprinklersSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
       } finally {
         setInitialLoading(false);
       }
@@ -100,20 +131,35 @@ export default function EditSprinkler() {
     loadData();
   }, [id, router]);
 
-  const machineOptions = useMemo(
-    () => ["مكينة 1", "مكينة 2", "مكينة 3", "مكينة 4"],
-    []
-  );
+  const machineOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        items
+          .map((item) => item.machineName || item.machine || "")
+          .filter(Boolean)
+      )
+    );
+  }, [items]);
 
   const gearOptions = useMemo(
-    () => ["جير 1", "جير 2", "جير 3", "جير 4"],
+    () => [
+      "1/1",
+      "1/1 (300)",
+      "1/1 (350)",
+      "1/1 (425)",
+      "10/11",
+      "10/11 (400)",
+      "10/11 (425)",
+      "5/6 (350)",
+    ],
     []
   );
 
-  const cropOptions = useMemo(
-    () => ["برسيم", "رودس", "ذرة", "قمح", "شعير", "غير محدد"],
-    []
-  );
+  const cropOptions = useMemo(() => {
+    return Array.from(
+      new Set(items.map((item) => item.cropType || "").filter(Boolean))
+    );
+  }, [items]);
 
   const updateField = (key, value) => {
     setForm((prev) => ({
@@ -173,12 +219,14 @@ export default function EditSprinkler() {
     setSaving(true);
 
     try {
+      const cleanedGearName = normalizeGear(form.gearName);
+
       await updateDoc(doc(db, "sprinklers", id), {
         name: form.name,
         sprinklerName: form.name,
         farmName: form.farmName,
         machineName: form.machineName,
-        gearName: form.gearName,
+        gearName: cleanedGearName,
         cropType: form.cropType,
         movementType: form.movementType,
         workerId: form.workerId,
