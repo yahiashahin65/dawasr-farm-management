@@ -48,6 +48,7 @@ export default function Sprinklers() {
   const [farms, setFarms] = useState([]);
   const [machines, setMachines] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState("");
 
@@ -103,12 +104,17 @@ export default function Sprinklers() {
 
   const updateFilter = (key, value) => {
     setCurrentPage(1);
-    setFilters((prev) => ({ ...prev, [key]: value }));
+
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
   };
 
   const clearFilters = () => {
     setSearch("");
     setCurrentPage(1);
+
     setFilters({
       farmName: "",
       machineName: "",
@@ -152,7 +158,21 @@ export default function Sprinklers() {
     return workers.size;
   }, [filteredItems]);
 
+  const totalMachines = useMemo(() => {
+    return new Set(
+      filteredItems
+        .map((item) => item.machineName || item.machine)
+        .filter(Boolean)
+    ).size;
+  }, [filteredItems]);
+
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedItems = useMemo(() => {
     return filteredItems.slice(
@@ -205,13 +225,7 @@ export default function Sprinklers() {
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">عدد المكاين</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {
-                    new Set(
-                      filteredItems
-                        .map((item) => item.machineName || item.machine)
-                        .filter(Boolean)
-                    ).size
-                  }
+                  {totalMachines}
                 </h3>
               </div>
             </div>
@@ -394,27 +408,31 @@ export default function Sprinklers() {
               </table>
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filteredItems.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">
-                صفحة {currentPage} من {totalPages}
-              </span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
