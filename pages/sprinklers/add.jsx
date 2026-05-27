@@ -21,6 +21,27 @@ const MOVEMENT_OPTIONS = [
   "نصين",
 ];
 
+const normalizeGear = (value) => {
+  const text = String(value || "").replace(/\s/g, "");
+
+  if (text.includes("10/11")) {
+    if (text.includes("400")) return "10/11 (400)";
+    if (text.includes("425")) return "10/11 (425)";
+    return "10/11";
+  }
+
+  if (text.includes("5/6")) return "5/6 (350)";
+
+  if (text.includes("1/1")) {
+    if (text.includes("300")) return "1/1 (300)";
+    if (text.includes("350")) return "1/1 (350)";
+    if (text.includes("425")) return "1/1 (425)";
+    return "1/1";
+  }
+
+  return value || "";
+};
+
 export default function AddSprinkler() {
   const router = useRouter();
   const { canManage } = useUserRole();
@@ -80,7 +101,16 @@ export default function AddSprinkler() {
   );
 
   const gearOptions = useMemo(
-    () => ["جير 1", "جير 2", "جير 3", "جير 4"],
+    () => [
+      "1/1",
+      "1/1 (300)",
+      "1/1 (350)",
+      "1/1 (425)",
+      "10/11",
+      "10/11 (400)",
+      "10/11 (425)",
+      "5/6 (350)",
+    ],
     []
   );
 
@@ -147,12 +177,14 @@ export default function AddSprinkler() {
     setSaving(true);
 
     try {
+      const cleanedGearName = normalizeGear(form.gearName);
+
       const docRef = await addDoc(collection(db, "sprinklers"), {
         name: form.name,
         sprinklerName: form.name,
         farmName: form.farmName,
         machineName: form.machineName,
-        gearName: form.gearName,
+        gearName: cleanedGearName,
         cropType: form.cropType,
         movementType: form.movementType,
         workerId: form.workerId,
