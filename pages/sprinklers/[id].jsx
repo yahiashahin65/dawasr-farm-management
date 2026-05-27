@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-
-import {
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
 
@@ -20,17 +16,9 @@ const normalizeMovement = (value) => {
     return "ثلاث أرباع دائري";
   }
 
-  if (text.includes("نصين") || text.includes("نصفين")) {
-    return "نصين";
-  }
-
-  if (text.includes("نصف") || text.includes("نص")) {
-    return "نصف دائري";
-  }
-
-  if (text.includes("دائري") || text.includes("دايري")) {
-    return "دائري";
-  }
+  if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
+  if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
+  if (text.includes("دائري") || text.includes("دايري")) return "دائري";
 
   return text || "-";
 };
@@ -43,7 +31,7 @@ function InfoCard({ label, value, href = null }) {
       {href ? (
         <Link
           href={href}
-          className="mt-2 block text-lg font-black text-green-700 hover:underline"
+          className="mt-2 block text-lg font-black text-slate-900 hover:underline"
         >
           {value || "-"}
         </Link>
@@ -140,10 +128,7 @@ export default function SprinklerDetails() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <InfoCard
-                    label="المزرعة"
-                    value={item.farmName}
-                  />
+                  <InfoCard label="المزرعة" value={item.farmName} />
 
                   <InfoCard
                     label="المكينة"
@@ -155,10 +140,7 @@ export default function SprinklerDetails() {
                     value={item.gearName || item.gear}
                   />
 
-                  <InfoCard
-                    label="نوع المحصول"
-                    value={item.cropType}
-                  />
+                  <InfoCard label="نوع المحصول" value={item.cropType} />
 
                   <InfoCard
                     label="حركة الرشاش"
@@ -168,19 +150,12 @@ export default function SprinklerDetails() {
                   <InfoCard
                     label="العامل"
                     value={item.workerName}
-                    href={
-                      item.workerId
-                        ? `/workers/${item.workerId}`
-                        : null
-                    }
+                    href={item.workerId ? `/workers/${item.workerId}` : null}
                   />
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/sprinklers"
-                    className="btn-secondary"
-                  >
+                  <Link href="/sprinklers" className="btn-secondary">
                     رجوع للقائمة
                   </Link>
 
