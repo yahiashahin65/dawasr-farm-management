@@ -16,20 +16,23 @@ import {
   faChartLine,
   faScrewdriverWrench,
   faRightLeft,
+  faSeedling,
+  faDroplet,
 } from "@fortawesome/free-solid-svg-icons";
 
 const links = [
   { href: "/dashboard", label: "لوحة التحكم", icon: faGaugeHigh },
   { href: "/reports", label: "التقارير", icon: faChartLine },
   { href: "/assets", label: "الأصول والعهد", icon: faTractor },
-  { href: "/assets/workshop", label: "الأصول في الورش", icon: faScrewdriverWrench },
   { href: "/assets/movements", label: "سجل الحركات", icon: faRightLeft },
+  { href: "/heaps", label: "الأكوام", icon: faSeedling },
+  { href: "/sprinklers", label: "الرشاشات", icon: faDroplet },
+  { href: "/assets/workshop", label: "الأصول في الورش", icon: faScrewdriverWrench },
   { href: "/engineers", label: "المهندسون", icon: faUserTie },
   { href: "/farms", label: "المزارع", icon: faWheatAwn },
   { href: "/kubras", label: "الكِبر", icon: faWarehouse },
   { href: "/asset-types", label: "أنواع الأصول", icon: faLayerGroup },
   { href: "/workers", label: "العمال", icon: faUsers },
-  { href: "/heaps", label: "الأكوام", icon: faLayerGroup },
 ];
 
 export default function Layout({ children, title = "لوحة التحكم" }) {
