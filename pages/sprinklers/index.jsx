@@ -10,20 +10,19 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
-
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-
 import {
   faEye,
   faPen,
   faTrash,
   faMagnifyingGlass,
   faBroom,
+  faPlus,
 } from "@fortawesome/free-solid-svg-icons";
 
 const PAGE_SIZE = 10;
@@ -35,17 +34,9 @@ const normalizeMovement = (value) => {
     return "ثلاث أرباع دائري";
   }
 
-  if (text.includes("نصين") || text.includes("نصفين")) {
-    return "نصين";
-  }
-
-  if (text.includes("نصف") || text.includes("نص")) {
-    return "نصف دائري";
-  }
-
-  if (text.includes("دائري") || text.includes("دايري")) {
-    return "دائري";
-  }
+  if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
+  if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
+  if (text.includes("دائري") || text.includes("دايري")) return "دائري";
 
   return text || "-";
 };
@@ -56,10 +47,8 @@ export default function Sprinklers() {
   const [items, setItems] = useState([]);
   const [farms, setFarms] = useState([]);
   const [machines, setMachines] = useState([]);
-
   const [initialLoading, setInitialLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-
   const [search, setSearch] = useState("");
 
   const [filters, setFilters] = useState({
@@ -78,22 +67,24 @@ export default function Sprinklers() {
       ...d.data(),
     }));
 
-    const farmsList = farmsSnap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
+    setItems(sprinklers);
 
-    const machinesList = Array.from(
-      new Set(
-        sprinklers
-          .map((item) => item.machineName || item.machine || "")
-          .filter(Boolean)
-      )
+    setFarms(
+      farmsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }))
     );
 
-    setItems(sprinklers);
-    setFarms(farmsList);
-    setMachines(machinesList);
+    setMachines(
+      Array.from(
+        new Set(
+          sprinklers
+            .map((item) => item.machineName || item.machine || "")
+            .filter(Boolean)
+        )
+      )
+    );
   };
 
   useEffect(() => {
@@ -112,17 +103,12 @@ export default function Sprinklers() {
 
   const updateFilter = (key, value) => {
     setCurrentPage(1);
-
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   const clearFilters = () => {
     setSearch("");
     setCurrentPage(1);
-
     setFilters({
       farmName: "",
       machineName: "",
@@ -159,11 +145,8 @@ export default function Sprinklers() {
     const workers = new Set();
 
     filteredItems.forEach((item) => {
-      if (item.workerId) {
-        workers.add(item.workerId);
-      } else if (item.workerName) {
-        workers.add(item.workerName);
-      }
+      if (item.workerId) workers.add(item.workerId);
+      else if (item.workerName) workers.add(item.workerName);
     });
 
     return workers.size;
@@ -213,18 +196,14 @@ export default function Sprinklers() {
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">
-                  عدد العمال
-                </p>
+                <p className="text-sm font-bold text-slate-500">عدد العمال</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalWorkers}
                 </h3>
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">
-                  عدد المكاين
-                </p>
+                <p className="text-sm font-bold text-slate-500">عدد المكاين</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {
                     new Set(
@@ -284,16 +263,25 @@ export default function Sprinklers() {
               </select>
             </div>
 
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm font-bold text-slate-500">
                 المعروض في هذه الصفحة: {paginatedItems.length} من إجمالي النتائج{" "}
                 {filteredItems.length}
               </div>
 
-              <button onClick={clearFilters} className="btn-secondary">
-                <FontAwesomeIcon icon={faBroom} />
-                مسح الفلاتر
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={clearFilters} className="btn-secondary">
+                  <FontAwesomeIcon icon={faBroom} />
+                  مسح الفلاتر
+                </button>
+
+                {canManage && (
+                  <Link href="/sprinklers/add" className="btn-primary">
+                    <FontAwesomeIcon icon={faPlus} />
+                    إضافة رشاش
+                  </Link>
+                )}
+              </div>
             </div>
 
             <div className="page-card overflow-x-auto">
@@ -353,12 +341,14 @@ export default function Sprinklers() {
                         {item.workerId ? (
                           <Link
                             href={`/workers/${item.workerId}`}
-                            className="text-green-700 hover:underline"
+                            className="font-bold text-slate-900 hover:underline"
                           >
                             {item.workerName || "-"}
                           </Link>
                         ) : (
-                          item.workerName || "-"
+                          <span className="font-bold text-slate-900">
+                            {item.workerName || "-"}
+                          </span>
                         )}
                       </td>
 
