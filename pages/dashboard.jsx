@@ -34,6 +34,8 @@ import {
   faArrowUpRightDots,
   faSeedling,
   faCubesStacked,
+  faDroplet,
+  faGears,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { calculateAssetsStats } from "../lib/assetsStats";
@@ -105,6 +107,20 @@ function MiniTable({ title, items, empty = "لا توجد بيانات" }) {
   );
 }
 
+const normalizeMovement = (value) => {
+  const text = String(value || "").trim();
+
+  if (text.includes("ثلاث") || text.includes("3") || text.includes("تلات")) {
+    return "ثلاث أرباع دائري";
+  }
+
+  if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
+  if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
+  if (text.includes("دائري") || text.includes("دايري")) return "دائري";
+
+  return text || "غير محدد";
+};
+
 export default function Dashboard() {
   const [assets, setAssets] = useState([]);
   const [workers, setWorkers] = useState([]);
@@ -114,6 +130,7 @@ export default function Dashboard() {
   const [types, setTypes] = useState([]);
   const [movements, setMovements] = useState([]);
   const [heaps, setHeaps] = useState([]);
+  const [sprinklers, setSprinklers] = useState([]);
 
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -122,7 +139,7 @@ export default function Dashboard() {
       setInitialLoading(true);
 
       try {
-        const [a, w, f, e, k, t, h, m] = await Promise.all([
+        const [a, w, f, e, k, t, h, s, m] = await Promise.all([
           getDocs(query(collection(db, "assets"), orderBy("createdAt", "desc"))),
           getDocs(collection(db, "workers")),
           getDocs(collection(db, "farms")),
@@ -132,6 +149,9 @@ export default function Dashboard() {
           getDocs(
             query(collection(db, "heaps"), orderBy("createdAt", "desc"))
           ).catch(() => getDocs(collection(db, "heaps"))),
+          getDocs(
+            query(collection(db, "sprinklers"), orderBy("createdAt", "desc"))
+          ).catch(() => getDocs(collection(db, "sprinklers"))),
           getDocs(
             query(
               collection(db, "assetMovements"),
@@ -148,6 +168,7 @@ export default function Dashboard() {
         setKubras(normalizeList(k.docs));
         setTypes(normalizeList(t.docs));
         setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 20));
+        setSprinklers(s.docs.map((d) => ({ id: d.id, ...d.data() })));
         setMovements(
           m.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 8)
         );
@@ -208,6 +229,87 @@ export default function Dashboard() {
     };
   }, [heaps]);
 
+  const sprinklerStats = useMemo(() => {
+    const workersSet = new Set();
+    const farmsSet = new Set();
+    const byFarmMap = {};
+    const byWorkerMap = {};
+    const byMovementMap = {};
+    const byCropTypeMap = {};
+
+    sprinklers.forEach((item) => {
+      const farmName = item.farmName || "غير محدد";
+      const workerName = item.workerName || "غير محدد";
+      const movementType = normalizeMovement(item.movementType);
+      const cropType = item.cropType || "غير محدد";
+
+      if (item.workerId) workersSet.add(item.workerId);
+      else if (item.workerName) workersSet.add(item.workerName);
+
+      if (farmName && farmName !== "غير محدد") {
+        farmsSet.add(farmName);
+      }
+
+      if (!byFarmMap[farmName]) {
+        byFarmMap[farmName] = {
+          label: farmName,
+          count: 0,
+          href: `/sprinklers?farmName=${farmName}`,
+        };
+      }
+      byFarmMap[farmName].count += 1;
+
+      if (!byWorkerMap[workerName]) {
+        byWorkerMap[workerName] = {
+          label: workerName,
+          count: 0,
+          href: item.workerId ? `/workers/${item.workerId}` : "/sprinklers",
+        };
+      }
+      byWorkerMap[workerName].count += 1;
+
+      if (!byMovementMap[movementType]) {
+        byMovementMap[movementType] = {
+          label: movementType,
+          count: 0,
+          href: "/sprinklers",
+        };
+      }
+      byMovementMap[movementType].count += 1;
+
+      if (!byCropTypeMap[cropType]) {
+        byCropTypeMap[cropType] = {
+          label: cropType,
+          count: 0,
+          href: "/sprinklers",
+        };
+      }
+      byCropTypeMap[cropType].count += 1;
+    });
+
+    return {
+      total: sprinklers.length,
+      totalMachines: sprinklers.filter(
+        (item) => item.machineName || item.machine
+      ).length,
+      totalWorkers: workersSet.size,
+      totalFarms: farmsSet.size,
+      byFarm: Object.values(byFarmMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+      byWorker: Object.values(byWorkerMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+      byMovement: Object.values(byMovementMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+      byCropType: Object.values(byCropTypeMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+      latest: sprinklers.slice(0, 8),
+    };
+  }, [sprinklers]);
+
   const cards = [
     {
       title: "إجمالي الأصول",
@@ -232,6 +334,38 @@ export default function Dashboard() {
       icon: faSeedling,
       sub: "عدد اللبن داخل الأكوام",
       tone: "purple",
+    },
+    {
+      title: "إجمالي الرشاشات",
+      value: sprinklerStats.total,
+      href: "/sprinklers",
+      icon: faDroplet,
+      sub: "كل الرشاشات المسجلة",
+      tone: "blue",
+    },
+    {
+      title: "عدد المكائن",
+      value: sprinklerStats.totalMachines,
+      href: "/sprinklers",
+      icon: faGears,
+      sub: "الرشاشات التي تحتوي على مكينة",
+      tone: "slate",
+    },
+    {
+      title: "عمال الرشاشات",
+      value: sprinklerStats.totalWorkers,
+      href: "/sprinklers",
+      icon: faUsers,
+      sub: "عمال مرتبطون بالرشاشات",
+      tone: "purple",
+    },
+    {
+      title: "مزارع بها رشاشات",
+      value: sprinklerStats.totalFarms,
+      href: "/sprinklers",
+      icon: faWheatAwn,
+      sub: "عدد المزارع التي تحتوي رشاشات",
+      tone: "green",
     },
     {
       title: "المعدات الصالحة",
@@ -430,11 +564,32 @@ export default function Dashboard() {
                 title="الأكوام حسب النوع / عدد اللبن"
                 items={heapStats.byCropType}
               />
-              <MiniTable title="حسب نوع المعدة" items={byType} />
-              <MiniTable title="حسب التصنيف" items={byCategory} />
-              <MiniTable title="حسب المزرعة" items={byFarm} />
-              <MiniTable title="حسب الكِبرة" items={byKubra} />
-              <MiniTable title="حسب العامل" items={byWorker} />
+
+              <MiniTable
+                title="الرشاشات حسب المزرعة"
+                items={sprinklerStats.byFarm}
+              />
+
+              <MiniTable
+                title="الرشاشات حسب العامل"
+                items={sprinklerStats.byWorker}
+              />
+
+              <MiniTable
+                title="الرشاشات حسب حركة الرشاش"
+                items={sprinklerStats.byMovement}
+              />
+
+              <MiniTable
+                title="الرشاشات حسب نوع المحصول"
+                items={sprinklerStats.byCropType}
+              />
+
+              <MiniTable title="الأصول والعهد حسب نوع المعدة" items={byType} />
+              <MiniTable title="الأصول والعهد حسب التصنيف" items={byCategory} />
+              <MiniTable title="الأصول والعهد حسب المزرعة" items={byFarm} />
+              <MiniTable title="الأصول والعهد حسب الكِبرة" items={byKubra} />
+              <MiniTable title="الأصول والعهد حسب العامل" items={byWorker} />
             </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-2">
@@ -472,6 +627,60 @@ export default function Dashboard() {
                       <tr>
                         <td className="table-td text-center" colSpan="4">
                           لا توجد أكوام
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="page-card overflow-x-auto">
+                <h3 className="p-5 pb-2 font-black">آخر الرشاشات</h3>
+
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="table-th">الرشاش</th>
+                      <th className="table-th">المزرعة</th>
+                      <th className="table-th">المكينة</th>
+                      <th className="table-th">العامل</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {sprinklerStats.latest.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="clickable-row border-t border-slate-100"
+                      >
+                        <td className="table-td font-bold">
+                          <Link href={`/sprinklers/${item.id}`}>
+                            {item.name || item.sprinklerName || "-"}
+                          </Link>
+                        </td>
+                        <td className="table-td">{item.farmName || "-"}</td>
+                        <td className="table-td">
+                          {item.machineName || item.machine || "-"}
+                        </td>
+                        <td className="table-td">
+                          {item.workerId ? (
+                            <Link
+                              href={`/workers/${item.workerId}`}
+                              className="font-bold text-slate-900 hover:underline"
+                            >
+                              {item.workerName || "-"}
+                            </Link>
+                          ) : (
+                            item.workerName || "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+
+                    {sprinklerStats.latest.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="4">
+                          لا توجد رشاشات
                         </td>
                       </tr>
                     )}
