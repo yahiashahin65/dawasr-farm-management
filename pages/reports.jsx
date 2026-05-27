@@ -77,6 +77,20 @@ function HeapReportList({ rows }) {
   );
 }
 
+const normalizeMovement = (value) => {
+  const text = String(value || "").trim();
+
+  if (text.includes("ثلاث") || text.includes("3") || text.includes("تلات")) {
+    return "ثلاث أرباع دائري";
+  }
+
+  if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
+  if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
+  if (text.includes("دائري") || text.includes("دايري")) return "دائري";
+
+  return text || "غير محدد";
+};
+
 export default function Reports() {
   const [assets, setAssets] = useState([]);
   const [types, setTypes] = useState([]);
@@ -84,6 +98,7 @@ export default function Reports() {
   const [kubras, setKubras] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [heaps, setHeaps] = useState([]);
+  const [sprinklers, setSprinklers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
@@ -91,13 +106,14 @@ export default function Reports() {
       setInitialLoading(true);
 
       try {
-        const [a, t, f, k, w, h] = await Promise.all([
+        const [a, t, f, k, w, h, s] = await Promise.all([
           getDocs(collection(db, "assets")),
           getDocs(collection(db, "assetTypes")),
           getDocs(collection(db, "farms")),
           getDocs(collection(db, "kubras")),
           getDocs(collection(db, "workers")),
           getDocs(collection(db, "heaps")),
+          getDocs(collection(db, "sprinklers")),
         ]);
 
         setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -106,6 +122,7 @@ export default function Reports() {
         setKubras(normalizeList(k.docs));
         setWorkers(normalizeList(w.docs));
         setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setSprinklers(s.docs.map((d) => ({ id: d.id, ...d.data() })));
       } finally {
         setInitialLoading(false);
       }
@@ -174,6 +191,86 @@ export default function Reports() {
       latest: [...heaps].slice(0, 5),
     };
   }, [heaps]);
+
+  const sprinklerStats = useMemo(() => {
+    const byFarmMap = {};
+    const byMovementMap = {};
+    const byCropTypeMap = {};
+    const byWorkerMap = {};
+    const workersSet = new Set();
+    const farmsSet = new Set();
+
+    sprinklers.forEach((item) => {
+      const farmName = item.farmName || "غير محدد";
+      const movementType = normalizeMovement(item.movementType);
+      const cropType = item.cropType || "غير محدد";
+      const workerName = item.workerName || "غير محدد";
+
+      if (item.workerId) workersSet.add(item.workerId);
+      else if (item.workerName) workersSet.add(item.workerName);
+
+      if (farmName && farmName !== "غير محدد") {
+        farmsSet.add(farmName);
+      }
+
+      if (!byFarmMap[farmName]) {
+        byFarmMap[farmName] = {
+          label: farmName,
+          count: 0,
+          href: `/sprinklers?farmName=${farmName}`,
+        };
+      }
+
+      byFarmMap[farmName].count += 1;
+
+      if (!byMovementMap[movementType]) {
+        byMovementMap[movementType] = {
+          label: movementType,
+          count: 0,
+          href: "/sprinklers",
+        };
+      }
+
+      byMovementMap[movementType].count += 1;
+
+      if (!byCropTypeMap[cropType]) {
+        byCropTypeMap[cropType] = {
+          label: cropType,
+          count: 0,
+          href: "/sprinklers",
+        };
+      }
+
+      byCropTypeMap[cropType].count += 1;
+
+      if (!byWorkerMap[workerName]) {
+        byWorkerMap[workerName] = {
+          label: workerName,
+          count: 0,
+          href: item.workerId ? `/workers/${item.workerId}` : "/sprinklers",
+        };
+      }
+
+      byWorkerMap[workerName].count += 1;
+    });
+
+    return {
+      total: sprinklers.length,
+      totalMachines: sprinklers.filter(
+        (item) => item.machineName || item.machine
+      ).length,
+      totalWorkers: workersSet.size,
+      totalFarms: farmsSet.size,
+      byFarm: Object.values(byFarmMap).sort((a, b) => b.count - a.count),
+      byMovement: Object.values(byMovementMap).sort(
+        (a, b) => b.count - a.count
+      ),
+      byCropType: Object.values(byCropTypeMap).sort(
+        (a, b) => b.count - a.count
+      ),
+      byWorker: Object.values(byWorkerMap).sort((a, b) => b.count - a.count),
+    };
+  }, [sprinklers]);
 
   const rowsByStatus = [
     { label: "صالح", count: stats.good, href: "/assets?status=صالح" },
@@ -259,7 +356,7 @@ export default function Reports() {
           <AppLoader
             variant="compact"
             title="جاري تحميل التقارير..."
-            subtitle="يتم تجهيز بيانات الأصول والأكوام"
+            subtitle="يتم تجهيز بيانات الأصول والأكوام والرشاشات"
           />
         ) : (
           <>
@@ -279,7 +376,7 @@ export default function Reports() {
               ))}
             </div>
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Link href="/heaps" className="page-card p-4">
                 <p className="text-sm font-bold text-slate-500">
                   إجمالي الأكوام
@@ -303,30 +400,69 @@ export default function Reports() {
                   من الأكوام
                 </span>
               </div>
+
+              <Link href="/sprinklers" className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الرشاشات
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {sprinklerStats.total}
+                </h3>
+                <span className="mt-3 inline-flex badge bg-blue-50 text-blue-700">
+                  عرض الرشاشات
+                </span>
+              </Link>
+
+              <div className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">عدد المكائن</p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {sprinklerStats.totalMachines}
+                </h3>
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <div className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  عمال الرشاشات
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {sprinklerStats.totalWorkers}
+                </h3>
+              </div>
+
+              <div className="page-card p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  مزارع بها رشاشات
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {sprinklerStats.totalFarms}
+                </h3>
+              </div>
             </div>
 
             <div className="grid gap-3 xl:grid-cols-2">
-              <Section title="حسب التصنيف">
+              <Section title="الأصول والعهد حسب التصنيف">
                 <RowList rows={rowsByCategory} />
               </Section>
 
-              <Section title="حسب نوع الأصل">
+              <Section title="الأصول والعهد حسب نوع الأصل">
                 <RowList rows={rowsByType} />
               </Section>
 
-              <Section title="حسب نوع المكان">
+              <Section title="الأصول والعهد حسب نوع المكان">
                 <RowList rows={rowsByPlaceType} />
               </Section>
 
-              <Section title="حسب المزرعة">
+              <Section title="الأصول والعهد حسب المزرعة">
                 <RowList rows={rowsByFarm} />
               </Section>
 
-              <Section title="حسب الكِبرة">
+              <Section title="الأصول والعهد حسب الكِبرة">
                 <RowList rows={rowsByKubra} />
               </Section>
 
-              <Section title="حسب العامل">
+              <Section title="الأصول والعهد حسب العامل">
                 <RowList rows={rowsByWorker} />
               </Section>
 
@@ -340,6 +476,22 @@ export default function Reports() {
 
               <Section title="الأكوام حسب المزرعة والرشاش">
                 <HeapReportList rows={heapStats.bySprinkler} />
+              </Section>
+
+              <Section title="الرشاشات حسب المزرعة">
+                <RowList rows={sprinklerStats.byFarm} />
+              </Section>
+
+              <Section title="الرشاشات حسب العامل">
+                <RowList rows={sprinklerStats.byWorker} />
+              </Section>
+
+              <Section title="الرشاشات حسب حركة الرشاش">
+                <RowList rows={sprinklerStats.byMovement} />
+              </Section>
+
+              <Section title="الرشاشات حسب نوع المحصول">
+                <RowList rows={sprinklerStats.byCropType} />
               </Section>
             </div>
 
