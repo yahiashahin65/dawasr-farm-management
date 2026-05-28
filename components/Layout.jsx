@@ -24,6 +24,7 @@ import {
 const links = [
   { href: "/dashboard", label: "الرئيسية", icon: faGaugeHigh },
   { href: "/reports", label: "التقارير", icon: faChartLine },
+  { href: "/analytics", label: "التحليلات", icon: faChartPie },
   { href: "/assets", label: "الأصول والعهد", icon: faTractor },
   { href: "/assets/movements", label: "سجل الحركات", icon: faRightLeft },
   { href: "/heaps", label: "الأكوام", icon: faSeedling },
