@@ -120,7 +120,19 @@ function SummaryCard({ title, value, subtitle, color = "green" }) {
   );
 }
 
-function ChartCard({ title, subtitle, children, tall = false }) {
+function ChartCard({
+  title,
+  subtitle,
+  children,
+  tall = false,
+  compact = false,
+}) {
+  const heightClass = compact
+    ? "h-[260px]"
+    : tall
+    ? "h-[460px]"
+    : "h-[360px]";
+
   return (
     <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-100 transition duration-300 hover:-translate-y-1 hover:shadow-2xl">
       <div className="mb-4">
@@ -133,7 +145,7 @@ function ChartCard({ title, subtitle, children, tall = false }) {
         ) : null}
       </div>
 
-      <div className={tall ? "min-h-[440px]" : "min-h-[360px]"}>
+      <div className={heightClass}>
         {children}
       </div>
     </div>
@@ -528,6 +540,7 @@ export default function Analytics() {
               <ChartCard
                 title="الرشاشات حسب المزرعة"
                 subtitle="أعلى المزارع حسب عدد الرشاشات"
+                compact
               >
                 <HorizontalListChart
                   items={sprinklersByFarm}
@@ -572,6 +585,7 @@ export default function Analytics() {
               <ChartCard
                 title="الأكوام حسب نوع المحصول / عدد اللبن"
                 subtitle="ترتيب المحاصيل حسب إجمالي عدد اللبن"
+                compact
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
