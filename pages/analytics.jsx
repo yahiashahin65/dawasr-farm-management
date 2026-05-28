@@ -22,9 +22,34 @@ import Layout from "../components/Layout";
 import AppLoader from "../components/AppLoader";
 import { calculateAssetsStats } from "../lib/assetsStats";
 
-const COLORS = ["#16a34a", "#2563eb", "#f59e0b", "#9333ea", "#dc2626", "#0891b2"];
+const COLORS = {
+  green: "#16a34a",
+  blue: "#2563eb",
+  amber: "#f59e0b",
+  purple: "#9333ea",
+  red: "#dc2626",
+  cyan: "#0891b2",
+};
 
-const shortName = (value, max = 8) => {
+const PIE_COLORS = [
+  COLORS.green,
+  COLORS.blue,
+  COLORS.amber,
+  COLORS.purple,
+  COLORS.red,
+  COLORS.cyan,
+];
+
+const formatNumber = (value) => {
+  const number = Number(value || 0);
+
+  if (number >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
+  if (number >= 1000) return `${Math.round(number / 1000)}K`;
+
+  return number;
+};
+
+const shortName = (value, max = 10) => {
   const text = String(value || "-");
   return text.length > max ? `${text.slice(0, max)}..` : text;
 };
@@ -33,50 +58,84 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-xl">
+    <div className="rounded-3xl border border-slate-200 bg-white/95 p-4 text-sm shadow-2xl backdrop-blur">
       <p className="mb-2 font-black text-slate-900">{label}</p>
 
-      {payload.map((item) => (
-        <p key={item.name} className="font-bold" style={{ color: item.color }}>
-          {item.name}: {item.value}
-        </p>
-      ))}
+      <div className="space-y-1">
+        {payload.map((item, index) => (
+          <p
+            key={`${item.name}-${index}`}
+            className="flex items-center justify-between gap-4 font-bold"
+            style={{ color: item.color }}
+          >
+            <span>{item.name}</span>
+            <span>{item.value}</span>
+          </p>
+        ))}
+      </div>
     </div>
   );
 }
 
 function SummaryCard({ title, value, subtitle, color = "green" }) {
-  const colors = {
-    green: "from-green-600 to-emerald-700 shadow-green-100",
-    blue: "from-blue-600 to-cyan-700 shadow-blue-100",
-    amber: "from-amber-500 to-orange-600 shadow-amber-100",
-    purple: "from-purple-600 to-fuchsia-700 shadow-purple-100",
+  const styles = {
+    green: {
+      wrapper: "bg-green-50 text-green-700 shadow-green-100",
+      icon: "bg-green-600",
+    },
+    blue: {
+      wrapper: "bg-blue-50 text-blue-700 shadow-blue-100",
+      icon: "bg-blue-600",
+    },
+    amber: {
+      wrapper: "bg-amber-50 text-amber-700 shadow-amber-100",
+      icon: "bg-amber-500",
+    },
+    purple: {
+      wrapper: "bg-purple-50 text-purple-700 shadow-purple-100",
+      icon: "bg-purple-600",
+    },
   };
 
+  const active = styles[color] || styles.green;
+
   return (
-    <div
-      className={`rounded-3xl bg-gradient-to-br ${
-        colors[color] || colors.green
-      } p-5 text-white shadow-xl transition duration-300 hover:-translate-y-1`}
-    >
-      <p className="text-sm font-black text-white/80">{title}</p>
-      <h3 className="mt-2 text-4xl font-black">{value}</h3>
-      <p className="mt-2 text-xs font-bold text-white/75">{subtitle}</p>
+    <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-xl shadow-slate-100 transition duration-300 hover:-translate-y-1">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-500">{title}</p>
+
+          <h3 className="mt-3 text-4xl font-black text-slate-900">
+            {formatNumber(value)}
+          </h3>
+
+          <p className="mt-2 text-xs font-bold text-slate-400">{subtitle}</p>
+        </div>
+
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-2xl ${active.wrapper}`}
+        >
+          <span className={`h-3 w-3 rounded-full ${active.icon}`} />
+        </div>
+      </div>
     </div>
   );
 }
 
 function ChartCard({ title, subtitle, children, tall = false }) {
   return (
-    <div className="page-card p-5 transition duration-300 hover:-translate-y-1 hover:shadow-xl">
+    <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-100 transition duration-300 hover:-translate-y-1 hover:shadow-2xl">
       <div className="mb-4">
         <h3 className="text-lg font-black text-slate-900">{title}</h3>
+
         {subtitle ? (
-          <p className="mt-1 text-xs font-bold text-slate-400">{subtitle}</p>
+          <p className="mt-1 text-xs font-bold leading-6 text-slate-400">
+            {subtitle}
+          </p>
         ) : null}
       </div>
 
-      <div className={tall ? "h-[430px]" : "h-[340px]"}>{children}</div>
+      <div className={tall ? "h-[460px]" : "h-[360px]"}>{children}</div>
     </div>
   );
 }
@@ -85,7 +144,7 @@ const normalizeMovement = (value) => {
   const text = String(value || "").trim();
 
   if (text.includes("ثلاث") || text.includes("3") || text.includes("تلات")) {
-    return "ثلاث أرباع دائري";
+    return "ثلاث أرباع";
   }
 
   if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
@@ -134,6 +193,11 @@ export default function Analytics() {
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
+  const totalMachines = useMemo(
+    () => sprinklers.filter((item) => item.machineName || item.machine).length,
+    [sprinklers]
+  );
+
   const assetsByStatus = useMemo(
     () => [
       { name: "صالح", value: stats.good },
@@ -161,7 +225,7 @@ export default function Analytics() {
       map[name].value += 1;
     });
 
-    return toChartRows(map).slice(0, 10);
+    return toChartRows(map).slice(0, 8);
   }, [sprinklers]);
 
   const sprinklersByMovement = useMemo(() => {
@@ -187,7 +251,7 @@ export default function Analytics() {
       map[name].value += bricks;
     });
 
-    return toChartRows(map).slice(0, 10);
+    return toChartRows(map).slice(0, 8);
   }, [heaps]);
 
   const workerLoad = useMemo(() => {
@@ -210,13 +274,8 @@ export default function Analytics() {
       })
       .filter((item) => item.total > 0)
       .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
+      .slice(0, 8);
   }, [workers, assets, sprinklers]);
-
-  const totalMachines = useMemo(
-    () => sprinklers.filter((item) => item.machineName || item.machine).length,
-    [sprinklers]
-  );
 
   const totalsComparison = useMemo(
     () => [
@@ -240,154 +299,274 @@ export default function Analytics() {
         ) : (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <SummaryCard title="إجمالي الأصول" value={assets.length} subtitle="معدات / قطع غيار / أدوات" color="green" />
-              <SummaryCard title="إجمالي الأكوام" value={heaps.length} subtitle="كل الأكوام المسجلة" color="amber" />
-              <SummaryCard title="إجمالي الرشاشات" value={sprinklers.length} subtitle="الرشاشات الموجودة بالمزارع" color="blue" />
-              <SummaryCard title="عدد المكائن" value={totalMachines} subtitle="الرشاشات التي تحتوي على مكينة" color="purple" />
+              <SummaryCard
+                title="إجمالي الأصول"
+                value={assets.length}
+                subtitle="معدات / قطع غيار / أدوات"
+                color="green"
+              />
+
+              <SummaryCard
+                title="إجمالي الأكوام"
+                value={heaps.length}
+                subtitle="كل الأكوام المسجلة"
+                color="amber"
+              />
+
+              <SummaryCard
+                title="إجمالي الرشاشات"
+                value={sprinklers.length}
+                subtitle="الرشاشات الموجودة بالمزارع"
+                color="blue"
+              />
+
+              <SummaryCard
+                title="عدد المكائن"
+                value={totalMachines}
+                subtitle="الرشاشات التي تحتوي على مكينة"
+                color="purple"
+              />
             </div>
 
             <div className="grid gap-5 xl:grid-cols-2">
-              <ChartCard title="الأصول حسب الحالة" subtitle="توزيع المعدات بين صالح وعاطل وفي الورشة">
+              <ChartCard
+                title="توزيع المعدات حسب الحالة"
+                subtitle="بين صالح وعاطل وفي الورشة"
+              >
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                  <PieChart margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
                     <Pie
                       data={assetsByStatus}
                       dataKey="value"
                       nameKey="name"
-                      innerRadius={55}
+                      innerRadius={60}
                       outerRadius={95}
-                      paddingAngle={3}
+                      paddingAngle={4}
                     >
                       {assetsByStatus.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index]} />
+                        <Cell
+                          key={index}
+                          fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        />
                       ))}
                     </Pie>
+
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="bottom" height={45} />
+
+                    <Legend
+                      verticalAlign="bottom"
+                      height={45}
+                      wrapperStyle={{ fontSize: 12, fontWeight: 800 }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <ChartCard title="الأصول حسب التصنيف" subtitle="معدات وقطع غيار وأدوات فقط">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={assetsByCategory} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={35} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="العدد" fill="#16a34a" radius={[12, 12, 0, 0]} barSize={38} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="الرشاشات حسب المزرعة" subtitle="أعلى 10 مزارع حسب عدد الرشاشات" tall>
+              <ChartCard
+                title="الأصول حسب التصنيف"
+                subtitle="معدات وقطع غيار وأدوات فقط"
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={sprinklersByFarm}
-                    layout="vertical"
-                    margin={{ top: 10, right: 20, left: 35, bottom: 10 }}
+                    data={assetsByCategory}
+                    margin={{ top: 20, right: 10, left: 5, bottom: 20 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={70}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => shortName(value, 7)}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="عدد الرشاشات" fill="#2563eb" radius={[0, 12, 12, 0]} barSize={22} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="الرشاشات حسب حركة الرشاش" subtitle="دائري / نصف دائري / ثلاث أرباع / نصين">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={sprinklersByMovement}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={95}
-                      paddingAngle={3}
-                    >
-                      {sprinklersByMovement.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="bottom" height={45} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="الأكوام حسب نوع المحصول / عدد اللبن" subtitle="ترتيب المحاصيل حسب إجمالي عدد اللبن">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={heapsByCrop} margin={{ top: 25, right: 10, left: 10, bottom: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis
                       allowDecimals={false}
+                      width={45}
                       tick={{ fontSize: 12 }}
-                      width={55}
-                      tickFormatter={(value) =>
-                        Number(value) >= 1000 ? `${Math.round(Number(value) / 1000)}K` : value
-                      }
+                      tickFormatter={formatNumber}
                     />
                     <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="value" name="عدد اللبن" fill="#f59e0b" radius={[12, 12, 0, 0]} barSize={42} />
+                    <Bar
+                      dataKey="value"
+                      name="العدد"
+                      fill={COLORS.green}
+                      radius={[16, 16, 0, 0]}
+                      barSize={42}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
 
-              <ChartCard title="أكثر العمال عليهم أصول ورشاشات" subtitle="مقارنة بين العهد والرشاشات لكل عامل" tall>
+              <ChartCard
+                title="الرشاشات حسب المزرعة"
+                subtitle="أعلى المزارع حسب عدد الرشاشات"
+                tall
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={sprinklersByFarm}
+                    layout="vertical"
+                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis
+                      type="number"
+                      allowDecimals={false}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={95}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => shortName(value, 11)}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="value"
+                      name="عدد الرشاشات"
+                      fill={COLORS.blue}
+                      radius={[0, 16, 16, 0]}
+                      barSize={26}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard
+                title="الرشاشات حسب حركة الرشاش"
+                subtitle="دائري / نصف دائري / ثلاث أرباع / نصين"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
+                    <Pie
+                      data={sprinklersByMovement}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={95}
+                      paddingAngle={4}
+                    >
+                      {sprinklersByMovement.map((_, index) => (
+                        <Cell
+                          key={index}
+                          fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+
+                    <Tooltip content={<CustomTooltip />} />
+
+                    <Legend
+                      verticalAlign="bottom"
+                      height={45}
+                      wrapperStyle={{ fontSize: 12, fontWeight: 800 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard
+                title="الأكوام حسب نوع المحصول / عدد اللبن"
+                subtitle="ترتيب المحاصيل حسب إجمالي عدد اللبن"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={heapsByCrop}
+                    margin={{ top: 25, right: 10, left: 5, bottom: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => shortName(value, 8)}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      width={55}
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={formatNumber}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="value"
+                      name="عدد اللبن"
+                      fill={COLORS.amber}
+                      radius={[16, 16, 0, 0]}
+                      barSize={44}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard
+                title="أكثر العمال عليهم أصول ورشاشات"
+                subtitle="مقارنة واضحة بين العهد والرشاشات لكل عامل"
+                tall
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={workerLoad}
                     layout="vertical"
-                    margin={{ top: 10, right: 20, left: 35, bottom: 10 }}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                    <XAxis
+                      type="number"
+                      allowDecimals={false}
+                      tick={{ fontSize: 12 }}
+                    />
                     <YAxis
                       type="category"
                       dataKey="name"
-                      width={70}
+                      width={95}
                       tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => shortName(value, 7)}
+                      tickFormatter={(value) => shortName(value, 11)}
                     />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={35} />
-                    <Bar dataKey="assets" name="أصول" fill="#16a34a" radius={[0, 12, 12, 0]} barSize={18} />
-                    <Bar dataKey="sprinklers" name="رشاشات" fill="#2563eb" radius={[0, 12, 12, 0]} barSize={18} />
+                    <Legend
+                      verticalAlign="top"
+                      height={35}
+                      wrapperStyle={{ fontSize: 12, fontWeight: 800 }}
+                    />
+                    <Bar
+                      dataKey="assets"
+                      name="أصول"
+                      fill={COLORS.green}
+                      radius={[0, 16, 16, 0]}
+                      barSize={18}
+                    />
+                    <Bar
+                      dataKey="sprinklers"
+                      name="رشاشات"
+                      fill={COLORS.blue}
+                      radius={[0, 16, 16, 0]}
+                      barSize={18}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
 
               <div className="xl:col-span-2">
-                <ChartCard title="مقارنة عامة" subtitle="نظرة عامة على الأصول والأكوام والرشاشات والمكائن">
+                <ChartCard
+                  title="مقارنة عامة"
+                  subtitle="نظرة عامة على الأصول والأكوام والرشاشات والمكائن"
+                >
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={totalsComparison} margin={{ top: 25, right: 15, left: 10, bottom: 20 }}>
+                    <LineChart
+                      data={totalsComparison}
+                      margin={{ top: 25, right: 20, left: 5, bottom: 20 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis
                         allowDecimals={false}
-                        width={55}
+                        width={60}
                         tick={{ fontSize: 12 }}
-                        tickFormatter={(value) =>
-                          Number(value) >= 1000 ? `${Math.round(Number(value) / 1000)}K` : value
-                        }
+                        tickFormatter={formatNumber}
                       />
                       <Tooltip content={<CustomTooltip />} />
                       <Line
                         type="monotone"
                         dataKey="value"
                         name="الإجمالي"
-                        stroke="#16a34a"
+                        stroke={COLORS.green}
                         strokeWidth={4}
-                        dot={{ r: 5, fill: "#16a34a" }}
+                        dot={{ r: 5, fill: COLORS.green }}
                         activeDot={{ r: 7 }}
                       />
                     </LineChart>
@@ -400,4 +579,4 @@ export default function Analytics() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
