@@ -170,4 +170,4 @@ export default function Layout({ children, title = "مزارع السنبلة" }
       <main className="p-4 lg:mr-72 lg:p-6">{children}</main>
     </div>
   );
-    }
+}
