@@ -126,15 +126,18 @@ function ChartCard({
   children,
   tall = false,
   compact = false,
+  auto = false,
 }) {
-  const heightClass = compact
-    ? "h-[260px]"
+  const heightClass = auto
+    ? ""
+    : compact
+    ? "h-[300px]"
     : tall
     ? "h-[460px]"
     : "h-[360px]";
 
   return (
-    <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-100 transition duration-300 hover:-translate-y-1 hover:shadow-2xl">
+    <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-100 transition duration-300 hover:-translate-y-1 hover:shadow-2xl">
       <div className="mb-4">
         <h3 className="text-lg font-black text-slate-900">{title}</h3>
 
@@ -145,9 +148,7 @@ function ChartCard({
         ) : null}
       </div>
 
-      <div className={heightClass}>
-        {children}
-      </div>
+      <div className={heightClass}>{children}</div>
     </div>
   );
 }
@@ -194,7 +195,9 @@ function HorizontalListChart({ items, valueKey = "value", color = "green" }) {
 
               <div className="h-4 overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className={`h-full rounded-full ${barColors[color] || barColors.green}`}
+                  className={`h-full rounded-full ${
+                    barColors[color] || barColors.green
+                  }`}
                   style={{ width: `${width}%` }}
                 />
               </div>
@@ -202,7 +205,7 @@ function HorizontalListChart({ items, valueKey = "value", color = "green" }) {
           );
         })
       ) : (
-        <div className="flex min-h-[260px] items-center justify-center text-sm font-bold text-slate-400">
+        <div className="flex min-h-[180px] items-center justify-center text-sm font-bold text-slate-400">
           لا توجد بيانات
         </div>
       )}
@@ -281,7 +284,7 @@ function WorkerLoadChart({ items }) {
           );
         })
       ) : (
-        <div className="flex min-h-[260px] items-center justify-center text-sm font-bold text-slate-400">
+        <div className="flex min-h-[180px] items-center justify-center text-sm font-bold text-slate-400">
           لا توجد بيانات
         </div>
       )}
@@ -540,7 +543,7 @@ export default function Analytics() {
               <ChartCard
                 title="الرشاشات حسب المزرعة"
                 subtitle="أعلى المزارع حسب عدد الرشاشات"
-                compact
+                auto
               >
                 <HorizontalListChart
                   items={sprinklersByFarm}
@@ -615,7 +618,7 @@ export default function Analytics() {
               <ChartCard
                 title="أكثر العمال عليهم أصول ورشاشات"
                 subtitle="مقارنة واضحة بين العهد والرشاشات لكل عامل"
-                tall
+                auto
               >
                 <WorkerLoadChart items={workerLoad} />
               </ChartCard>
