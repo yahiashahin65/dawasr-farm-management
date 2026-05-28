@@ -49,10 +49,8 @@ const formatNumber = (value) => {
   return number;
 };
 
-const shortName = (value, max = 10) => {
-  const text = String(value || "-");
-  return text.length > max ? `${text.slice(0, max)}..` : text;
-};
+const toChartRows = (map) =>
+  Object.values(map).sort((a, b) => b.value - a.value);
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -135,7 +133,146 @@ function ChartCard({ title, subtitle, children, tall = false }) {
         ) : null}
       </div>
 
-      <div className={tall ? "h-[460px]" : "h-[360px]"}>{children}</div>
+      <div className={tall ? "min-h-[440px]" : "min-h-[360px]"}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function HorizontalListChart({ items, valueKey = "value", color = "green" }) {
+  const barColors = {
+    green: "bg-green-600",
+    blue: "bg-blue-600",
+    amber: "bg-amber-500",
+    purple: "bg-purple-600",
+  };
+
+  const textColors = {
+    green: "text-green-700",
+    blue: "text-blue-700",
+    amber: "text-amber-700",
+    purple: "text-purple-700",
+  };
+
+  const max = Math.max(...items.map((item) => Number(item[valueKey] || 0)), 1);
+
+  return (
+    <div className="space-y-4 pt-2">
+      {items.length ? (
+        items.map((item) => {
+          const value = Number(item[valueKey] || 0);
+          const width = Math.max((value / max) * 100, 5);
+
+          return (
+            <div key={item.name} className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="max-w-[70%] truncate text-sm font-black text-slate-700">
+                  {item.name || "-"}
+                </span>
+
+                <span
+                  className={`rounded-full bg-slate-100 px-3 py-1 text-xs font-black ${
+                    textColors[color] || textColors.green
+                  }`}
+                >
+                  {value}
+                </span>
+              </div>
+
+              <div className="h-4 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${barColors[color] || barColors.green}`}
+                  style={{ width: `${width}%` }}
+                />
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="flex min-h-[260px] items-center justify-center text-sm font-bold text-slate-400">
+          لا توجد بيانات
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkerLoadChart({ items }) {
+  const max = Math.max(
+    ...items.map(
+      (item) => Number(item.assets || 0) + Number(item.sprinklers || 0)
+    ),
+    1
+  );
+
+  return (
+    <div className="space-y-5 pt-2">
+      {items.length ? (
+        items.map((item) => {
+          const assets = Number(item.assets || 0);
+          const sprinklers = Number(item.sprinklers || 0);
+
+          const assetsWidth = assets ? Math.max((assets / max) * 100, 4) : 0;
+          const sprinklersWidth = sprinklers
+            ? Math.max((sprinklers / max) * 100, 4)
+            : 0;
+
+          return (
+            <div key={item.name} className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="max-w-[70%] truncate text-sm font-black text-slate-700">
+                  {item.name}
+                </span>
+
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">
+                  {item.total}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs font-black text-green-700">
+                    أصول
+                  </span>
+
+                  <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-green-600"
+                      style={{ width: `${assetsWidth}%` }}
+                    />
+                  </div>
+
+                  <span className="w-8 shrink-0 text-xs font-black text-slate-500">
+                    {assets}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs font-black text-blue-700">
+                    رشاشات
+                  </span>
+
+                  <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-blue-600"
+                      style={{ width: `${sprinklersWidth}%` }}
+                    />
+                  </div>
+
+                  <span className="w-8 shrink-0 text-xs font-black text-slate-500">
+                    {sprinklers}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="flex min-h-[260px] items-center justify-center text-sm font-bold text-slate-400">
+          لا توجد بيانات
+        </div>
+      )}
     </div>
   );
 }
@@ -153,9 +290,6 @@ const normalizeMovement = (value) => {
 
   return text || "غير محدد";
 };
-
-const toChartRows = (map) =>
-  Object.values(map).sort((a, b) => b.value - a.value);
 
 export default function Analytics() {
   const [assets, setAssets] = useState([]);
@@ -394,37 +528,12 @@ export default function Analytics() {
               <ChartCard
                 title="الرشاشات حسب المزرعة"
                 subtitle="أعلى المزارع حسب عدد الرشاشات"
-                tall
               >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={sprinklersByFarm}
-                    layout="vertical"
-                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      type="number"
-                      allowDecimals={false}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={95}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => shortName(value, 11)}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar
-                      dataKey="value"
-                      name="عدد الرشاشات"
-                      fill={COLORS.blue}
-                      radius={[0, 16, 16, 0]}
-                      barSize={26}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <HorizontalListChart
+                  items={sprinklersByFarm}
+                  valueKey="value"
+                  color="blue"
+                />
               </ChartCard>
 
               <ChartCard
@@ -470,11 +579,7 @@ export default function Analytics() {
                     margin={{ top: 25, right: 10, left: 5, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => shortName(value, 8)}
-                    />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis
                       allowDecimals={false}
                       width={55}
@@ -498,47 +603,7 @@ export default function Analytics() {
                 subtitle="مقارنة واضحة بين العهد والرشاشات لكل عامل"
                 tall
               >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={workerLoad}
-                    layout="vertical"
-                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      type="number"
-                      allowDecimals={false}
-                      tick={{ fontSize: 12 }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={95}
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => shortName(value, 11)}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend
-                      verticalAlign="top"
-                      height={35}
-                      wrapperStyle={{ fontSize: 12, fontWeight: 800 }}
-                    />
-                    <Bar
-                      dataKey="assets"
-                      name="أصول"
-                      fill={COLORS.green}
-                      radius={[0, 16, 16, 0]}
-                      barSize={18}
-                    />
-                    <Bar
-                      dataKey="sprinklers"
-                      name="رشاشات"
-                      fill={COLORS.blue}
-                      radius={[0, 16, 16, 0]}
-                      barSize={18}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <WorkerLoadChart items={workerLoad} />
               </ChartCard>
 
               <div className="xl:col-span-2">
@@ -579,4 +644,4 @@ export default function Analytics() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+}
