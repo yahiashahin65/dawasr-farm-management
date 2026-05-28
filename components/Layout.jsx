@@ -14,6 +14,7 @@ import {
   faWarehouse,
   faLayerGroup,
   faChartLine,
+  faChartPie,
   faScrewdriverWrench,
   faRightLeft,
   faSeedling,
