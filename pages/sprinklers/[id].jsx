@@ -23,6 +23,13 @@ const normalizeMovement = (value) => {
   return text || "-";
 };
 
+const getTowersCount = (item) =>
+  item?.towersCount ??
+  item?.towerCount ??
+  item?.towersNumber ??
+  item?.towers ??
+  "";
+
 function InfoCard({ label, value, href = null }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4">
@@ -145,6 +152,11 @@ export default function SprinklerDetails() {
                   <InfoCard
                     label="حركة الرشاش"
                     value={normalizeMovement(item.movementType)}
+                  />
+
+                  <InfoCard
+                    label="عدد الأبراج"
+                    value={getTowersCount(item)}
                   />
 
                   <InfoCard
