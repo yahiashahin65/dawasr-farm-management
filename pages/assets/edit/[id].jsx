@@ -12,18 +12,24 @@ import {
 
 import { db } from "../../../lib/firebase";
 import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../../lib/systemSettings";
 
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
-
-const statuses = ["صالح", "عاطل", "في الورشة"];
 
 const categories = [
   { value: "asset", label: "معدة" },
   { value: "spare_part", label: "قطعة غيار" },
   { value: "tool", label: "أداة" },
-  { value: "material", label: "مواد" },
 ];
+
+const mergeCurrentValue = (options, value) => {
+  if (!value) return options;
+  return options.includes(value) ? options : [value, ...options];
+};
 
 export default function EditAsset() {
   const router = useRouter();
@@ -33,6 +39,11 @@ export default function EditAsset() {
   const [farms, setFarms] = useState([]);
   const [kubras, setKubras] = useState([]);
   const [types, setTypes] = useState([]);
+
+  const [statusOptions, setStatusOptions] = useState(
+    DEFAULT_SYSTEM_SETTINGS.assetStatus
+  );
+  const [workshopOptions, setWorkshopOptions] = useState([]);
 
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -56,12 +67,13 @@ export default function EditAsset() {
 
   useEffect(() => {
     const loadLists = async () => {
-      const [workersSnap, farmsSnap, kubrasSnap, typesSnap] =
+      const [workersSnap, farmsSnap, kubrasSnap, typesSnap, settings] =
         await Promise.all([
           getDocs(collection(db, "workers")),
           getDocs(collection(db, "farms")),
           getDocs(collection(db, "kubras")),
           getDocs(collection(db, "assetTypes")),
+          loadMultipleSettingOptions(["assetStatus", "externalWorkshop"]),
         ]);
 
       const clean = (snap) =>
@@ -76,6 +88,14 @@ export default function EditAsset() {
       setFarms(clean(farmsSnap));
       setKubras(clean(kubrasSnap));
       setTypes(clean(typesSnap));
+
+      setStatusOptions(
+        settings.assetStatus?.length
+          ? settings.assetStatus
+          : DEFAULT_SYSTEM_SETTINGS.assetStatus
+      );
+
+      setWorkshopOptions(settings.externalWorkshop || []);
     };
 
     loadLists();
@@ -93,14 +113,19 @@ export default function EditAsset() {
         ...prev,
         ...data,
 
-        category: data.category || "asset",
+        category:
+          data.category === "material" ? "asset" : data.category || "asset",
 
         assetTypeName: data.assetTypeName || "مكينة",
 
         placeType: data.placeType || data.currentPlace?.type || "farm",
 
         placeId:
-          data.placeId || data.currentPlace?.id || data.farmId || data.kubraId || "",
+          data.placeId ||
+          data.currentPlace?.id ||
+          data.farmId ||
+          data.kubraId ||
+          "",
 
         externalWorkshopName:
           data.externalWorkshopName ||
@@ -127,11 +152,25 @@ export default function EditAsset() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [image]);
 
+  const isExternalWorkshop =
+    form.placeType === "external_workshop" || form.status === "في الورشة";
+
   const places = useMemo(() => {
     if (form.placeType === "farm") return farms;
     if (form.placeType === "kubra") return kubras;
     return [];
   }, [form.placeType, farms, kubras]);
+
+  const finalStatusOptions = useMemo(() => {
+    return mergeCurrentValue(
+      statusOptions.length ? statusOptions : DEFAULT_SYSTEM_SETTINGS.assetStatus,
+      form.status
+    );
+  }, [statusOptions, form.status]);
+
+  const finalWorkshopOptions = useMemo(() => {
+    return mergeCurrentValue(workshopOptions, form.externalWorkshopName);
+  }, [workshopOptions, form.externalWorkshopName]);
 
   const toggleWorker = (workerId) => {
     setForm((prev) => ({
@@ -156,8 +195,6 @@ export default function EditAsset() {
 
     if (loading) return;
 
-    const isExternalWorkshop = form.placeType === "external_workshop";
-
     if (!form.name.trim()) {
       alert("اسم الأصل مطلوب");
       return;
@@ -169,7 +206,7 @@ export default function EditAsset() {
     }
 
     if (isExternalWorkshop && !form.externalWorkshopName.trim()) {
-      alert("اسم الورشة الخارجية مطلوب");
+      alert("اختر الورشة الخارجية");
       return;
     }
 
@@ -181,6 +218,9 @@ export default function EditAsset() {
         : places.find((item) => item.id === form.placeId);
 
       const placeId = isExternalWorkshop ? "" : form.placeId;
+      const placeType = isExternalWorkshop
+        ? "external_workshop"
+        : form.placeType;
 
       const placeName = isExternalWorkshop
         ? form.externalWorkshopName.trim()
@@ -205,30 +245,30 @@ export default function EditAsset() {
 
         assetTypeName: type?.name || form.assetTypeName || "مكينة",
 
-        status: form.placeType === "external_workshop" ? "في الورشة" : form.status,
+        status: isExternalWorkshop ? "في الورشة" : form.status,
 
-        placeType: form.placeType,
+        placeType,
 
         placeId,
 
         placeName,
 
         currentPlace: {
-          type: form.placeType,
+          type: placeType,
           id: placeId,
           name: placeName,
         },
 
-        farmId: form.placeType === "farm" ? form.placeId : "",
+        farmId: placeType === "farm" ? form.placeId : "",
 
-        farmName: form.placeType === "farm" ? placeName : "",
+        farmName: placeType === "farm" ? placeName : "",
 
-        kubraId: form.placeType === "kubra" ? form.placeId : "",
+        kubraId: placeType === "kubra" ? form.placeId : "",
 
-        kubraName: form.placeType === "kubra" ? placeName : "",
+        kubraName: placeType === "kubra" ? placeName : "",
 
         externalWorkshopName:
-          form.placeType === "external_workshop" ? placeName : "",
+          placeType === "external_workshop" ? placeName : "",
 
         workerIds: form.workerIds,
 
@@ -325,24 +365,26 @@ export default function EditAsset() {
             <select
               className="form-input"
               value={form.placeType}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextPlaceType = e.target.value;
+
                 setForm({
                   ...form,
 
-                  placeType: e.target.value,
+                  placeType: nextPlaceType,
 
                   placeId: "",
 
                   externalWorkshopName: "",
 
                   status:
-                    e.target.value === "external_workshop"
+                    nextPlaceType === "external_workshop"
                       ? "في الورشة"
                       : form.status === "في الورشة"
                       ? "صالح"
                       : form.status,
-                })
-              }
+                });
+              }}
             >
               <option value="farm">داخل مزرعة</option>
 
@@ -351,10 +393,9 @@ export default function EditAsset() {
               <option value="external_workshop">ورشة خارجية</option>
             </select>
 
-            {form.placeType === "external_workshop" ? (
-              <input
+            {isExternalWorkshop ? (
+              <select
                 className="form-input"
-                placeholder="اسم الورشة الخارجية"
                 value={form.externalWorkshopName || ""}
                 onChange={(e) =>
                   setForm({
@@ -362,10 +403,22 @@ export default function EditAsset() {
 
                     externalWorkshopName: e.target.value,
 
+                    placeType: "external_workshop",
+
+                    placeId: "",
+
                     status: "في الورشة",
                   })
                 }
-              />
+              >
+                <option value="">اختر الورشة الخارجية</option>
+
+                {finalWorkshopOptions.map((workshop) => (
+                  <option key={workshop} value={workshop}>
+                    {workshop}
+                  </option>
+                ))}
+              </select>
             ) : (
               <select
                 className="form-input"
@@ -392,21 +445,40 @@ export default function EditAsset() {
             <select
               className="form-input"
               value={form.status}
-              disabled={form.placeType === "external_workshop"}
-              onChange={(e) =>
+              disabled={isExternalWorkshop}
+              onChange={(e) => {
+                const nextStatus = e.target.value;
+
                 setForm({
                   ...form,
-                  status: e.target.value,
-                })
-              }
+                  status: nextStatus,
+                  placeType:
+                    nextStatus === "في الورشة"
+                      ? "external_workshop"
+                      : form.placeType === "external_workshop"
+                      ? "farm"
+                      : form.placeType,
+                  placeId: nextStatus === "في الورشة" ? "" : form.placeId,
+                  externalWorkshopName:
+                    nextStatus === "في الورشة"
+                      ? form.externalWorkshopName
+                      : "",
+                });
+              }}
             >
-              {statuses.map((status) => (
+              {finalStatusOptions.map((status) => (
                 <option key={status} value={status}>
                   {status}
                 </option>
               ))}
             </select>
           </div>
+
+          {isExternalWorkshop && finalWorkshopOptions.length === 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+              لا توجد ورش خارجية في الإعدادات. أضف الورش من صفحة إعدادات النظام أولًا.
+            </div>
+          )}
 
           <div>
             <label className="mb-2 block text-sm font-black text-slate-700">
