@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
 import { calculateAssetsStats } from "../../lib/assetsStats";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -53,21 +47,10 @@ export default function Assets() {
   const [workers, setWorkers] = useState([]);
 
   const [initialLoading, setInitialLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState("");
 
-  const [stats, setStats] = useState({
-    total: 0,
-    good: 0,
-    broken: 0,
-    inWorkshop: 0,
-    equipment: 0,
-    spareParts: 0,
-    tools: 0,
-    materials: 0,
-    inFarms: 0,
-    inKubras: 0,
-    inExternalWorkshops: 0,
-  });
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [filters, setFilters] = useState({
     status: "",
@@ -83,47 +66,84 @@ export default function Assets() {
   const [preview, setPreview] = useState(null);
   const [view, setView] = useState("table");
 
-  const loadAssets = async () => {
-    const snap = await getDocs(
-      query(collection(db, "assets"), orderBy("createdAt", "desc"))
-    );
-
-    const allAssets = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
-
-    setAllItems(allAssets);
-    setStats(calculateAssetsStats(allAssets));
-  };
-
-  const loadMetaData = async () => {
-    const [t, f, k, w] = await Promise.all([
-      getDocs(collection(db, "assetTypes")),
-      getDocs(collection(db, "farms")),
-      getDocs(collection(db, "kubras")),
-      getDocs(collection(db, "workers")),
-    ]);
-
-    setTypes(normalizeList(t.docs));
-    setFarms(normalizeList(f.docs));
-    setKubras(normalizeList(k.docs));
-    setWorkers(normalizeList(w.docs));
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribeAssets = subscribeCachedCollection({
+      db,
+      collectionName: "assets",
+      cacheKey: "cache:assets",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setAllItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا");
+      },
+    });
 
-      try {
-        await Promise.all([loadAssets(), loadMetaData()]);
-      } finally {
-        setInitialLoading(false);
-      }
+    const unsubscribeTypes = subscribeCachedCollection({
+      db,
+      collectionName: "assetTypes",
+      cacheKey: "cache:assetTypes",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: (data) => setTypes(normalizeList(data)),
+      onError: () => {
+        setRealtimeError("تعذر تحديث أنواع الأصول لحظيًا");
+      },
+    });
+
+    const unsubscribeFarms = subscribeCachedCollection({
+      db,
+      collectionName: "farms",
+      cacheKey: "cache:farms",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: (data) => setFarms(normalizeList(data)),
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا");
+      },
+    });
+
+    const unsubscribeKubras = subscribeCachedCollection({
+      db,
+      collectionName: "kubras",
+      cacheKey: "cache:kubras",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: (data) => setKubras(normalizeList(data)),
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا");
+      },
+    });
+
+    const unsubscribeWorkers = subscribeCachedCollection({
+      db,
+      collectionName: "workers",
+      cacheKey: "cache:workers",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: (data) => {
+        setWorkers(normalizeList(data));
+        setMetaLoading(false);
+      },
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات العمال لحظيًا");
+        setMetaLoading(false);
+      },
+    });
+
+    return () => {
+      unsubscribeAssets?.();
+      unsubscribeTypes?.();
+      unsubscribeFarms?.();
+      unsubscribeKubras?.();
+      unsubscribeWorkers?.();
     };
-
-    loadInitialData();
   }, []);
+
+  const stats = useMemo(() => {
+    return calculateAssetsStats(allItems);
+  }, [allItems]);
 
   useEffect(() => {
     const q = router.query;
@@ -170,7 +190,10 @@ export default function Assets() {
 
     if (confirm("هل تريد حذف الأصل؟")) {
       await deleteDoc(doc(db, "assets", id));
-      await loadAssets();
+
+      if (paginatedItems.length === 1 && currentPage > 1) {
+        setCurrentPage((prev) => prev - 1);
+      }
     }
   };
 
@@ -183,6 +206,8 @@ export default function Assets() {
           ${getPlaceName(asset)}
           ${asset.workerNames || ""}
           ${asset.code || ""}
+          ${asset.status || ""}
+          ${asset.category || ""}
         `.toLowerCase();
 
         return (
@@ -206,6 +231,12 @@ export default function Assets() {
   );
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedItems = useMemo(() => {
     return filtered.slice(
@@ -263,10 +294,12 @@ export default function Assets() {
     return "معدة";
   };
 
+  const isLoading = initialLoading || metaLoading;
+
   return (
     <ProtectedRoute>
       <Layout title="إدارة الأصول والعهد">
-        {initialLoading ? (
+        {isLoading ? (
           <AppLoader
             variant="compact"
             title="جاري تحميل الأصول..."
@@ -274,6 +307,12 @@ export default function Assets() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex flex-wrap gap-2">
                 {quick.map((q) => (
@@ -624,27 +663,29 @@ export default function Assets() {
               </div>
             )}
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filtered.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">
-                صفحة {currentPage} من {totalPages}
-              </span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
 
             {preview && (
               <div
