@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  limit,
-} from "firebase/firestore";
-
 import { db } from "../lib/firebase";
+import { subscribeCachedCollection } from "../lib/realtimeCache";
 
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
@@ -71,7 +64,9 @@ function StatCard({ title, value, href, icon, sub, tone = "green" }) {
         </div>
 
         <div
-          className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tones[tone]} group-hover:text-white`}
+          className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+            tones[tone] || tones.green
+          } group-hover:text-white`}
         >
           <FontAwesomeIcon icon={icon} />
         </div>
@@ -133,52 +128,178 @@ export default function Dashboard() {
   const [sprinklers, setSprinklers] = useState([]);
 
   const [initialLoading, setInitialLoading] = useState(true);
+  const [loadedMap, setLoadedMap] = useState({});
+  const [realtimeError, setRealtimeError] = useState("");
+
+  const markLoaded = (key) => {
+    setLoadedMap((prev) => ({
+      ...prev,
+      [key]: true,
+    }));
+  };
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribes = [];
 
-      try {
-        const [a, w, f, e, k, t, h, s, m] = await Promise.all([
-          getDocs(query(collection(db, "assets"), orderBy("createdAt", "desc"))),
-          getDocs(collection(db, "workers")),
-          getDocs(collection(db, "farms")),
-          getDocs(collection(db, "engineers")),
-          getDocs(collection(db, "kubras")),
-          getDocs(collection(db, "assetTypes")),
-          getDocs(
-            query(collection(db, "heaps"), orderBy("createdAt", "desc"))
-          ).catch(() => getDocs(collection(db, "heaps"))),
-          getDocs(
-            query(collection(db, "sprinklers"), orderBy("createdAt", "desc"))
-          ).catch(() => getDocs(collection(db, "sprinklers"))),
-          getDocs(
-            query(
-              collection(db, "assetMovements"),
-              orderBy("createdAt", "desc"),
-              limit(8)
-            )
-          ).catch(() => getDocs(collection(db, "assetMovements"))),
-        ]);
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assets",
+        cacheKey: "cache:assets",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setAssets(data);
+          markLoaded("assets");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا"),
+      })
+    );
 
-        setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setWorkers(normalizeList(w.docs));
-        setFarms(normalizeList(f.docs));
-        setEngineers(normalizeList(e.docs));
-        setKubras(normalizeList(k.docs));
-        setTypes(normalizeList(t.docs));
-        setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 20));
-        setSprinklers(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setMovements(
-          m.docs.map((d) => ({ id: d.id, ...d.data() })).slice(0, 8)
-        );
-      } finally {
-        setInitialLoading(false);
-      }
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "workers",
+        cacheKey: "cache:workers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setWorkers(normalizeList(data));
+          markLoaded("workers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات العمال لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "farms",
+        cacheKey: "cache:farms",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setFarms(normalizeList(data));
+          markLoaded("farms");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "engineers",
+        cacheKey: "cache:engineers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setEngineers(normalizeList(data));
+          markLoaded("engineers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات المهندسين لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "kubras",
+        cacheKey: "cache:kubras",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setKubras(normalizeList(data));
+          markLoaded("kubras");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assetTypes",
+        cacheKey: "cache:assetTypes",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setTypes(normalizeList(data));
+          markLoaded("types");
+        },
+        onError: () => setRealtimeError("تعذر تحديث أنواع الأصول لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "heaps",
+        cacheKey: "cache:heaps",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setHeaps(data);
+          markLoaded("heaps");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "sprinklers",
+        cacheKey: "cache:sprinklers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setSprinklers(data);
+          markLoaded("sprinklers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assetMovements",
+        cacheKey: "cache:assetMovements",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setMovements(data.slice(0, 8));
+          markLoaded("movements");
+        },
+        onError: () => setRealtimeError("تعذر تحديث سجل الحركات لحظيًا"),
+      })
+    );
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe?.());
     };
-
-    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    const required = [
+      "assets",
+      "workers",
+      "farms",
+      "engineers",
+      "kubras",
+      "types",
+      "heaps",
+      "sprinklers",
+      "movements",
+    ];
+
+    const done = required.every((key) => loadedMap[key]);
+
+    if (done) {
+      setInitialLoading(false);
+    }
+  }, [loadedMap]);
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
@@ -257,6 +378,7 @@ export default function Dashboard() {
           href: `/sprinklers?farmName=${farmName}`,
         };
       }
+
       byFarmMap[farmName].count += 1;
 
       if (!byWorkerMap[workerName]) {
@@ -266,6 +388,7 @@ export default function Dashboard() {
           href: item.workerId ? `/workers/${item.workerId}` : "/sprinklers",
         };
       }
+
       byWorkerMap[workerName].count += 1;
 
       if (!byMovementMap[movementType]) {
@@ -275,6 +398,7 @@ export default function Dashboard() {
           href: "/sprinklers",
         };
       }
+
       byMovementMap[movementType].count += 1;
 
       if (!byCropTypeMap[cropType]) {
@@ -284,6 +408,7 @@ export default function Dashboard() {
           href: "/sprinklers",
         };
       }
+
       byCropTypeMap[cropType].count += 1;
     });
 
@@ -309,6 +434,59 @@ export default function Dashboard() {
       latest: sprinklers.slice(0, 8),
     };
   }, [sprinklers]);
+
+  const byType = types
+    .map((type) => ({
+      label: type.name,
+      count: assets.filter((asset) => asset.assetTypeId === type.id).length,
+      href: `/assets?assetTypeId=${type.id}`,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byFarm = farms
+    .map((farm) => ({
+      label: farm.name,
+      count: assets.filter(
+        (asset) => asset.farmId === farm.id || asset.placeId === farm.id
+      ).length,
+      href: `/assets?farmId=${farm.id}`,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byKubra = kubras
+    .map((kubra) => ({
+      label: kubra.name,
+      count: assets.filter(
+        (asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id
+      ).length,
+      href: `/assets?kubraId=${kubra.id}`,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byWorker = workers
+    .map((worker) => ({
+      label: worker.name,
+      count: assets.filter((asset) =>
+        (asset.workerIds || []).includes(worker.id)
+      ).length,
+      href: `/assets?workerId=${worker.id}`,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const byCategory = [
+    { label: "معدات", count: stats.equipment, href: "/assets?category=asset" },
+    {
+      label: "قطع غيار",
+      count: stats.spareParts,
+      href: "/assets?category=spare_part",
+    },
+    { label: "أدوات", count: stats.tools, href: "/assets?category=tool" },
+    { label: "مواد", count: stats.materials, href: "/assets?category=material" },
+  ];
 
   const cards = [
     {
@@ -489,59 +667,6 @@ export default function Dashboard() {
     },
   ];
 
-  const byType = types
-    .map((type) => ({
-      label: type.name,
-      count: assets.filter((asset) => asset.assetTypeId === type.id).length,
-      href: `/assets?assetTypeId=${type.id}`,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-
-  const byFarm = farms
-    .map((farm) => ({
-      label: farm.name,
-      count: assets.filter(
-        (asset) => asset.farmId === farm.id || asset.placeId === farm.id
-      ).length,
-      href: `/assets?farmId=${farm.id}`,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-
-  const byKubra = kubras
-    .map((kubra) => ({
-      label: kubra.name,
-      count: assets.filter(
-        (asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id
-      ).length,
-      href: `/assets?kubraId=${kubra.id}`,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-
-  const byWorker = workers
-    .map((worker) => ({
-      label: worker.name,
-      count: assets.filter((asset) =>
-        (asset.workerIds || []).includes(worker.id)
-      ).length,
-      href: `/assets?workerId=${worker.id}`,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-
-  const byCategory = [
-    { label: "معدات", count: stats.equipment, href: "/assets?category=asset" },
-    {
-      label: "قطع غيار",
-      count: stats.spareParts,
-      href: "/assets?category=spare_part",
-    },
-    { label: "أدوات", count: stats.tools, href: "/assets?category=tool" },
-    { label: "مواد", count: stats.materials, href: "/assets?category=material" },
-  ];
-
   return (
     <ProtectedRoute>
       <Layout title="لوحة التحكم">
@@ -553,6 +678,12 @@ export default function Dashboard() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
               {cards.map((card) => (
                 <StatCard key={card.title} {...card} />
@@ -728,6 +859,14 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))}
+
+                    {assets.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="5">
+                          لا توجد أصول
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
