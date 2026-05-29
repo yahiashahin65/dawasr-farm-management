@@ -51,6 +51,13 @@ const getTowersValue = (data) =>
   data?.towers ??
   "";
 
+const getHectareValue = (data) =>
+  data?.hectareNumber ??
+  data?.hectare ??
+  data?.hectar ??
+  data?.hiktar ??
+  "";
+
 export default function EditSprinkler() {
   const router = useRouter();
   const { id } = router.query;
@@ -71,6 +78,7 @@ export default function EditSprinkler() {
     cropType: "",
     movementType: "",
     towersCount: "",
+    hectareNumber: "",
     workerId: "",
     workerName: "",
     imageUrl: "",
@@ -107,6 +115,7 @@ export default function EditSprinkler() {
           cropType: data.cropType || "",
           movementType: data.movementType || "",
           towersCount: getTowersValue(data),
+          hectareNumber: getHectareValue(data),
           workerId: data.workerId || "",
           workerName: data.workerName || "",
           imageUrl: data.imageUrl || "",
@@ -244,6 +253,7 @@ export default function EditSprinkler() {
         cropType: form.cropType,
         movementType: form.movementType,
         towersCount: Number(form.towersCount || 0),
+        hectareNumber: form.hectareNumber || "",
         workerId: form.workerId,
         workerName: form.workerName,
         imageUrl: form.imageUrl || "",
@@ -376,6 +386,18 @@ export default function EditSprinkler() {
                 </div>
 
                 <div>
+                  <label className="form-label">الهكتار</label>
+                  <input
+                    className="form-input"
+                    value={form.hectareNumber}
+                    onChange={(e) =>
+                      updateField("hectareNumber", e.target.value)
+                    }
+                    placeholder="مثال: 12"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
                   <label className="form-label">العامل</label>
                   <select
                     className="form-input"
