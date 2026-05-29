@@ -50,6 +50,9 @@ const getTowersCount = (item) =>
       0
   );
 
+const getHectareNumber = (item) =>
+  item.hectareNumber || item.hectare || item.hectar || item.hiktar || "";
+
 export default function Sprinklers() {
   const { canManage } = useUserRole();
 
@@ -78,13 +81,7 @@ export default function Sprinklers() {
     }));
 
     setItems(sprinklers);
-
-    setFarms(
-      farmsSnap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
+    setFarms(farmsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
     setMachines(
       Array.from(
@@ -100,7 +97,6 @@ export default function Sprinklers() {
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
-
       try {
         await loadData();
       } finally {
@@ -119,10 +115,7 @@ export default function Sprinklers() {
   const clearFilters = () => {
     setSearch("");
     setCurrentPage(1);
-    setFilters({
-      farmName: "",
-      machineName: "",
-    });
+    setFilters({ farmName: "", machineName: "" });
   };
 
   const filteredItems = useMemo(() => {
@@ -132,6 +125,7 @@ export default function Sprinklers() {
       const farmName = item.farmName || "";
       const machineName = item.machineName || item.machine || "";
       const towersCount = getTowersCount(item);
+      const hectareNumber = getHectareNumber(item);
 
       const text = `
         ${item.name || ""}
@@ -143,6 +137,7 @@ export default function Sprinklers() {
         ${item.workerName || ""}
         ${item.movementType || ""}
         ${towersCount}
+        ${hectareNumber}
       `.toLowerCase();
 
       return (
@@ -217,9 +212,7 @@ export default function Sprinklers() {
           <>
             <div className="mb-4 grid gap-3 md:grid-cols-4">
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">
-                  إجمالي الرشاشات
-                </p>
+                <p className="text-sm font-bold text-slate-500">إجمالي الرشاشات</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {filteredItems.length}
                 </h3>
@@ -233,18 +226,14 @@ export default function Sprinklers() {
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">
-                  عدد أنواع المكاين
-                </p>
+                <p className="text-sm font-bold text-slate-500">عدد أنواع المكاين</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalMachines}
                 </h3>
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">
-                  إجمالي الأبراج
-                </p>
+                <p className="text-sm font-bold text-slate-500">إجمالي الأبراج</p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalTowers}
                 </h3>
@@ -253,14 +242,11 @@ export default function Sprinklers() {
 
             <div className="page-card mb-4 grid gap-3 p-3 lg:grid-cols-4">
               <div className="flex items-center gap-2 lg:col-span-2">
-                <FontAwesomeIcon
-                  icon={faMagnifyingGlass}
-                  className="text-slate-400"
-                />
+                <FontAwesomeIcon icon={faMagnifyingGlass} className="text-slate-400" />
 
                 <input
                   className="w-full bg-transparent p-2 outline-none"
-                  placeholder="بحث باسم الرشاش أو المزرعة أو المكينة..."
+                  placeholder="بحث باسم الرشاش أو المزرعة أو المكينة أو الهكتار..."
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -275,7 +261,6 @@ export default function Sprinklers() {
                 onChange={(e) => updateFilter("farmName", e.target.value)}
               >
                 <option value="">كل المزارع</option>
-
                 {farms.map((farm) => (
                   <option key={farm.id} value={farm.name}>
                     {farm.name}
@@ -289,7 +274,6 @@ export default function Sprinklers() {
                 onChange={(e) => updateFilter("machineName", e.target.value)}
               >
                 <option value="">كل المكاين</option>
-
                 {machines.map((machine) => (
                   <option key={machine} value={machine}>
                     {machine}
@@ -311,10 +295,11 @@ export default function Sprinklers() {
                 </button>
 
                 {canManage && (
-  <Link href="/sprinklers/migrate" className="btn-secondary">
-    تحديث من Excel
-  </Link>
-)}
+                  <Link href="/sprinklers/migrate" className="btn-secondary">
+                    تحديث من Excel
+                  </Link>
+                )}
+
                 {canManage && (
                   <Link href="/sprinklers/add" className="btn-primary">
                     <FontAwesomeIcon icon={faPlus} />
@@ -336,6 +321,7 @@ export default function Sprinklers() {
                     <th className="table-th">نوع المحصول</th>
                     <th className="table-th">حركة الرشاش</th>
                     <th className="table-th">عدد الأبراج</th>
+                    <th className="table-th">الهكتار</th>
                     <th className="table-th">العامل</th>
                     <th className="table-th">إجراءات</th>
                   </tr>
@@ -361,15 +347,8 @@ export default function Sprinklers() {
                       </td>
 
                       <td className="table-td">{item.farmName || "-"}</td>
-
-                      <td className="table-td">
-                        {item.machineName || item.machine || "-"}
-                      </td>
-
-                      <td className="table-td">
-                        {item.gearName || item.gear || "-"}
-                      </td>
-
+                      <td className="table-td">{item.machineName || item.machine || "-"}</td>
+                      <td className="table-td">{item.gearName || item.gear || "-"}</td>
                       <td className="table-td">{item.cropType || "-"}</td>
 
                       <td className="table-td">
@@ -380,6 +359,10 @@ export default function Sprinklers() {
 
                       <td className="table-td font-bold">
                         {getTowersCount(item) || "-"}
+                      </td>
+
+                      <td className="table-td font-bold">
+                        {getHectareNumber(item) || "-"}
                       </td>
 
                       <td className="table-td">
@@ -399,10 +382,7 @@ export default function Sprinklers() {
 
                       <td className="table-td">
                         <div className="flex gap-2">
-                          <Link
-                            href={`/sprinklers/${item.id}`}
-                            className="btn-secondary !p-2"
-                          >
+                          <Link href={`/sprinklers/${item.id}`} className="btn-secondary !p-2">
                             <FontAwesomeIcon icon={faEye} />
                           </Link>
 
@@ -430,7 +410,7 @@ export default function Sprinklers() {
 
                   {filteredItems.length === 0 && (
                     <tr>
-                      <td className="table-td text-center" colSpan="10">
+                      <td className="table-td text-center" colSpan="11">
                         لا توجد رشاشات مطابقة
                       </td>
                     </tr>
@@ -469,4 +449,4 @@ export default function Sprinklers() {
       </Layout>
     </ProtectedRoute>
   );
-                  }
+}
