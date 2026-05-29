@@ -16,6 +16,7 @@ import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
+import { DEFAULT_SYSTEM_SETTINGS } from "../../lib/systemSettings";
 
 const SETTING_TYPES = [
   { value: "sprinklerMovement", label: "حركات الرشاش" },
@@ -49,6 +50,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const run = async () => {
       setInitialLoading(true);
+
       try {
         await loadData();
       } finally {
@@ -78,6 +80,17 @@ export default function SettingsPage() {
     setSaving(true);
 
     try {
+      const exists = items.some(
+        (item) =>
+          item.type === form.type &&
+          String(item.name || "").trim() === form.name.trim()
+      );
+
+      if (exists) {
+        alert("هذه القيمة موجودة بالفعل");
+        return;
+      }
+
       await addDoc(collection(db, "systemSettings"), {
         type: form.type,
         name: form.name.trim(),
@@ -97,6 +110,58 @@ export default function SettingsPage() {
     } catch (error) {
       console.error(error);
       alert("حدث خطأ أثناء حفظ الإعداد");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const seedDefaults = async () => {
+    if (!canManage) return;
+
+    const allItems = [];
+
+    Object.entries(DEFAULT_SYSTEM_SETTINGS).forEach(([type, values]) => {
+      values.forEach((name) => {
+        allItems.push({ type, name });
+      });
+    });
+
+    setSaving(true);
+
+    try {
+      let createdCount = 0;
+
+      for (const item of allItems) {
+        const exists = items.some(
+          (x) =>
+            x.type === item.type &&
+            String(x.name || "").trim() === String(item.name || "").trim()
+        );
+
+        if (exists) continue;
+
+        await addDoc(collection(db, "systemSettings"), {
+          type: item.type,
+          name: item.name,
+          notes: "",
+          isActive: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        createdCount += 1;
+      }
+
+      await loadData();
+
+      alert(
+        createdCount
+          ? `تم إنشاء ${createdCount} قيمة افتراضية`
+          : "كل القيم الافتراضية موجودة بالفعل"
+      );
+    } catch (error) {
+      console.error(error);
+      alert("حدث خطأ أثناء إنشاء القيم الافتراضية");
     } finally {
       setSaving(false);
     }
@@ -140,7 +205,7 @@ export default function SettingsPage() {
 
               <p className="mt-2 text-sm font-bold leading-7 text-slate-500">
                 استخدم هذه الصفحة لإدارة القوائم مثل المحاصيل، الجير، وحركات
-                الرشاش.
+                الرشاش والورش الخارجية.
               </p>
 
               <form onSubmit={submit} className="mt-5 space-y-4">
@@ -186,6 +251,15 @@ export default function SettingsPage() {
                   className="btn-primary w-full disabled:opacity-50"
                 >
                   {saving ? "جاري الحفظ..." : "حفظ الإعداد"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={seedDefaults}
+                  disabled={saving || !canManage}
+                  className="btn-secondary w-full disabled:opacity-50"
+                >
+                  إنشاء القيم الافتراضية
                 </button>
               </form>
             </div>
