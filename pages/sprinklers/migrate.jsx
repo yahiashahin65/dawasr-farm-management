@@ -29,7 +29,11 @@ const normalizeMovement = (value) => {
 
   if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
   if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
-  if (text.includes("دائري") || text.includes("دايري") || text.includes("داىري")) {
+  if (
+    text.includes("دائري") ||
+    text.includes("دايري") ||
+    text.includes("داىري")
+  ) {
     return "دائري";
   }
 
@@ -63,6 +67,7 @@ const parseExcelRows = (rows) => {
     const farmName = getCell(row, 5);
     const towersCount = toNumber(row[2]);
     const movementType = normalizeMovement(row[6]);
+    const hectareNumber = getCell(row, 8);
 
     if (!name || !farmName) return;
 
@@ -71,6 +76,7 @@ const parseExcelRows = (rows) => {
       farmName,
       towersCount,
       movementType,
+      hectareNumber,
       excelRowNumber: index + 1,
     });
   });
@@ -156,7 +162,10 @@ export default function MigrateSprinklers() {
           continue;
         }
 
-        if (!row.towersCount && !row.movementType) {
+        const hasAnyValue =
+          row.towersCount || row.movementType || row.hectareNumber;
+
+        if (!hasAnyValue) {
           skipped += 1;
           continue;
         }
@@ -164,6 +173,7 @@ export default function MigrateSprinklers() {
         await updateDoc(doc(db, "sprinklers", target.id), {
           towersCount: row.towersCount,
           movementType: row.movementType,
+          hectareNumber: row.hectareNumber || "",
           updatedAt: serverTimestamp(),
         });
 
@@ -189,12 +199,12 @@ export default function MigrateSprinklers() {
         <div className="grid gap-5 lg:grid-cols-3">
           <div className="page-card p-5">
             <h3 className="text-lg font-black text-slate-900">
-              تحديث عدد الأبراج وحركة الرشاش
+              تحديث الأبراج والحركة والهكتار
             </h3>
 
             <p className="mt-2 text-sm font-bold leading-7 text-slate-500">
               هذه الصفحة لا تضيف رشاشات جديدة. هي فقط تبحث عن الرشاش الموجود
-              وتحدث له عدد الأبراج وحركة الرشاش من ملف Excel.
+              وتحدث له عدد الأبراج وحركة الرشاش ورقم الهكتار من ملف Excel.
             </p>
 
             <input
@@ -216,7 +226,7 @@ export default function MigrateSprinklers() {
               onClick={updateOldSprinklers}
               className="btn-primary mt-5 w-full disabled:opacity-50"
             >
-              {updating ? "جاري تحديث البيانات..." : "تحديث الرشاشات القديمة"}
+              {updating ? "جاري تحديث البيانات..." : "تحديث البيانات القديمة"}
             </button>
 
             <Link href="/sprinklers" className="btn-secondary mt-3 w-full">
@@ -250,6 +260,7 @@ export default function MigrateSprinklers() {
                   <th className="table-th">المزرعة</th>
                   <th className="table-th">عدد الأبراج</th>
                   <th className="table-th">حركة الرشاش</th>
+                  <th className="table-th">الهكتار</th>
                 </tr>
               </thead>
 
@@ -260,12 +271,13 @@ export default function MigrateSprinklers() {
                     <td className="table-td">{item.farmName || "-"}</td>
                     <td className="table-td">{item.towersCount || "-"}</td>
                     <td className="table-td">{item.movementType || "-"}</td>
+                    <td className="table-td">{item.hectareNumber || "-"}</td>
                   </tr>
                 ))}
 
                 {!preview.length && (
                   <tr>
-                    <td className="table-td text-center" colSpan="4">
+                    <td className="table-td text-center" colSpan="5">
                       اختر ملف Excel أولًا
                     </td>
                   </tr>
