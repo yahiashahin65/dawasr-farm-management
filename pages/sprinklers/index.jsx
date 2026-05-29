@@ -41,6 +41,15 @@ const normalizeMovement = (value) => {
   return text || "-";
 };
 
+const getTowersCount = (item) =>
+  Number(
+    item.towersCount ||
+      item.towerCount ||
+      item.towersNumber ||
+      item.towers ||
+      0
+  );
+
 export default function Sprinklers() {
   const { canManage } = useUserRole();
 
@@ -104,17 +113,12 @@ export default function Sprinklers() {
 
   const updateFilter = (key, value) => {
     setCurrentPage(1);
-
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   const clearFilters = () => {
     setSearch("");
     setCurrentPage(1);
-
     setFilters({
       farmName: "",
       machineName: "",
@@ -127,6 +131,7 @@ export default function Sprinklers() {
     return items.filter((item) => {
       const farmName = item.farmName || "";
       const machineName = item.machineName || item.machine || "";
+      const towersCount = getTowersCount(item);
 
       const text = `
         ${item.name || ""}
@@ -137,6 +142,7 @@ export default function Sprinklers() {
         ${item.cropType || ""}
         ${item.workerName || ""}
         ${item.movementType || ""}
+        ${towersCount}
       `.toLowerCase();
 
       return (
@@ -164,6 +170,10 @@ export default function Sprinklers() {
         .map((item) => item.machineName || item.machine)
         .filter(Boolean)
     ).size;
+  }, [filteredItems]);
+
+  const totalTowers = useMemo(() => {
+    return filteredItems.reduce((sum, item) => sum + getTowersCount(item), 0);
   }, [filteredItems]);
 
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
@@ -205,7 +215,7 @@ export default function Sprinklers() {
           />
         ) : (
           <>
-            <div className="mb-4 grid gap-3 md:grid-cols-3">
+            <div className="mb-4 grid gap-3 md:grid-cols-4">
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">
                   إجمالي الرشاشات
@@ -223,9 +233,20 @@ export default function Sprinklers() {
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">عدد انواع المكاين</p>
+                <p className="text-sm font-bold text-slate-500">
+                  عدد أنواع المكاين
+                </p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalMachines}
+                </h3>
+              </div>
+
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الأبراج
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {totalTowers}
                 </h3>
               </div>
             </div>
@@ -309,6 +330,7 @@ export default function Sprinklers() {
                     <th className="table-th">الجير</th>
                     <th className="table-th">نوع المحصول</th>
                     <th className="table-th">حركة الرشاش</th>
+                    <th className="table-th">عدد الأبراج</th>
                     <th className="table-th">العامل</th>
                     <th className="table-th">إجراءات</th>
                   </tr>
@@ -349,6 +371,10 @@ export default function Sprinklers() {
                         <span className="badge bg-green-50 text-green-700">
                           {normalizeMovement(item.movementType)}
                         </span>
+                      </td>
+
+                      <td className="table-td font-bold">
+                        {getTowersCount(item) || "-"}
                       </td>
 
                       <td className="table-td">
@@ -399,7 +425,7 @@ export default function Sprinklers() {
 
                   {filteredItems.length === 0 && (
                     <tr>
-                      <td className="table-td text-center" colSpan="9">
+                      <td className="table-td text-center" colSpan="10">
                         لا توجد رشاشات مطابقة
                       </td>
                     </tr>
@@ -438,4 +464,4 @@ export default function Sprinklers() {
       </Layout>
     </ProtectedRoute>
   );
-}
+                  }
