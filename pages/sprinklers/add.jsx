@@ -60,6 +60,7 @@ export default function AddSprinkler() {
     cropType: "",
     movementType: "",
     towersCount: "",
+    hectareNumber: "",
     workerId: "",
     workerName: "",
     imageUrl: "",
@@ -189,6 +190,7 @@ export default function AddSprinkler() {
         cropType: form.cropType,
         movementType: form.movementType,
         towersCount: Number(form.towersCount || 0),
+        hectareNumber: form.hectareNumber || "",
         workerId: form.workerId,
         workerName: form.workerName,
         imageUrl: form.imageUrl || "",
@@ -322,6 +324,18 @@ export default function AddSprinkler() {
                 </div>
 
                 <div>
+                  <label className="form-label">الهكتار</label>
+                  <input
+                    className="form-input"
+                    value={form.hectareNumber}
+                    onChange={(e) =>
+                      updateField("hectareNumber", e.target.value)
+                    }
+                    placeholder="مثال: 12"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
                   <label className="form-label">العامل</label>
                   <select
                     className="form-input"
