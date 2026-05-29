@@ -56,8 +56,8 @@ export default function Layout({ children, title = "مزارع السنبلة" }
       dir="rtl"
       className="min-h-screen bg-gradient-to-b from-green-50 via-slate-50 to-white text-right text-slate-900"
     >
-      <aside className="fixed right-0 top-0 z-20 hidden h-full w-72 border-l border-green-100 bg-white p-5 shadow-xl shadow-green-50 lg:block">
-        <div className="mb-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-green-900 via-green-800 to-emerald-700 p-5 text-white shadow-lg shadow-green-100">
+      <aside className="fixed right-0 top-0 z-20 hidden h-screen w-72 border-l border-green-100 bg-white p-5 shadow-xl shadow-green-50 lg:flex lg:flex-col">
+        <div className="mb-6 shrink-0 overflow-hidden rounded-[2rem] bg-gradient-to-br from-green-900 via-green-800 to-emerald-700 p-5 text-white shadow-lg shadow-green-100">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-3xl bg-white/15">
             <FontAwesomeIcon icon={faLeaf} className="h-6 w-6" />
           </div>
@@ -73,7 +73,7 @@ export default function Layout({ children, title = "مزارع السنبلة" }
           </div>
         </div>
 
-        <nav className="space-y-2 overflow-y-auto pb-24">
+        <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-3 pl-1">
           {links.map((item) => {
             const active =
               router.pathname === item.href ||
@@ -90,14 +90,14 @@ export default function Layout({ children, title = "مزارع السنبلة" }
                 }`}
               >
                 <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                     active ? "bg-white/15" : "bg-slate-100"
                   }`}
                 >
                   <FontAwesomeIcon icon={item.icon} className="h-4 w-4" />
                 </span>
 
-                {item.label}
+                <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -105,7 +105,7 @@ export default function Layout({ children, title = "مزارع السنبلة" }
 
         <button
           onClick={logout}
-          className="absolute bottom-5 right-5 left-5 flex items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 transition hover:bg-red-100"
+          className="mt-4 shrink-0 flex items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-700 transition hover:bg-red-100"
         >
           <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
           تسجيل الخروج
