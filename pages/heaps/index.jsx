@@ -1,91 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  limit,
-  startAfter,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass, faPlus } from "@fortawesome/free-solid-svg-icons";
+import {
+  faEye,
+  faPen,
+  faTrash,
+  faMagnifyingGlass,
+  faBroom,
+  faPlus,
+} from "@fortawesome/free-solid-svg-icons";
+
+import useUserRole from "../../hooks/useUserRole";
 
 const PAGE_SIZE = 10;
 
 export default function HeapsPage() {
+  const { canManage } = useUserRole();
+
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
-
   const [initialLoading, setInitialLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
-
+  const [realtimeError, setRealtimeError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState({ 1: null });
-
-  const loadHeapsPage = async (
-    pageNumber = 1,
-    cursor = null,
-    showLoader = true
-  ) => {
-    if (showLoader) setPageLoading(true);
-
-    try {
-      const constraints = [orderBy("createdAt", "desc")];
-
-      if (cursor) {
-        constraints.push(startAfter(cursor));
-      }
-
-      constraints.push(limit(PAGE_SIZE + 1));
-
-      const snapshot = await getDocs(
-        query(collection(db, "heaps"), ...constraints)
-      );
-
-      const docs = snapshot.docs;
-      const visibleDocs = docs.slice(0, PAGE_SIZE);
-
-      setItems(
-        visibleDocs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-      );
-
-      setHasNextPage(docs.length > PAGE_SIZE);
-
-      setPageCursors((prev) => ({
-        ...prev,
-        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
-      }));
-
-      setCurrentPage(pageNumber);
-    } finally {
-      if (showLoader) setPageLoading(false);
-    }
-  };
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribe = subscribeCachedCollection({
+      db,
+      collectionName: "heaps",
+      cacheKey: "cache:heaps",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا");
+      },
+    });
 
-      try {
-        await loadHeapsPage(1, null, false);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadInitialData();
+    return () => unsubscribe?.();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -99,11 +60,56 @@ export default function HeapsPage() {
         ${item.farmName || ""}
         ${item.sprinklerName || ""}
         ${item.cropType || ""}
+        ${item.bricksCount || ""}
+        ${item.notes || ""}
       `.toLowerCase();
 
       return haystack.includes(keyword);
     });
   }, [items, search]);
+
+  const totalBricks = useMemo(() => {
+    return filteredItems.reduce(
+      (sum, item) => sum + Number(item.bricksCount || 0),
+      0
+    );
+  }, [filteredItems]);
+
+  const totalFarms = useMemo(() => {
+    return new Set(filteredItems.map((item) => item.farmId || item.farmName).filter(Boolean)).size;
+  }, [filteredItems]);
+
+  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedItems = useMemo(() => {
+    return filteredItems.slice(
+      (currentPage - 1) * PAGE_SIZE,
+      currentPage * PAGE_SIZE
+    );
+  }, [filteredItems, currentPage]);
+
+  const clearFilters = () => {
+    setSearch("");
+    setCurrentPage(1);
+  };
+
+  const remove = async (id) => {
+    if (!canManage) return;
+
+    if (confirm("هل تريد حذف الكوم؟")) {
+      await deleteDoc(doc(db, "heaps", id));
+
+      if (paginatedItems.length === 1 && currentPage > 1) {
+        setCurrentPage((prev) => prev - 1);
+      }
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -116,6 +122,35 @@ export default function HeapsPage() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">إجمالي الأكوام</p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {filteredItems.length}
+                </h3>
+              </div>
+
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">إجمالي اللبن</p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {totalBricks}
+                </h3>
+              </div>
+
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">عدد المزارع</p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {totalFarms}
+                </h3>
+              </div>
+            </div>
+
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="page-card flex flex-1 items-center gap-2 p-3">
                 <FontAwesomeIcon
@@ -127,25 +162,32 @@ export default function HeapsPage() {
                   type="text"
                   placeholder="بحث باسم الكوم أو المزرعة أو الرشاش أو النوع..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="w-full bg-transparent p-2 outline-none"
                 />
               </div>
 
-              <Link href="/heaps/add" className="btn-primary">
-                <FontAwesomeIcon icon={faPlus} />
-                إضافة كوم
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={clearFilters} className="btn-secondary">
+                  <FontAwesomeIcon icon={faBroom} />
+                  مسح البحث
+                </button>
+
+                {canManage && (
+                  <Link href="/heaps/add" className="btn-primary">
+                    <FontAwesomeIcon icon={faPlus} />
+                    إضافة كوم
+                  </Link>
+                )}
+              </div>
             </div>
 
-            {pageLoading && (
-              <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
-                جاري تحميل البيانات...
-              </div>
-            )}
-
             <div className="mb-3 text-sm font-bold text-slate-500">
-              المعروض في هذه الصفحة: {filteredItems.length}
+              المعروض في هذه الصفحة: {paginatedItems.length} من إجمالي النتائج{" "}
+              {filteredItems.length}
             </div>
 
             <div className="page-card overflow-x-auto">
@@ -162,16 +204,18 @@ export default function HeapsPage() {
                 </thead>
 
                 <tbody>
-                  {filteredItems.length === 0 ? (
+                  {paginatedItems.length === 0 ? (
                     <tr>
                       <td colSpan="6" className="table-td text-center">
                         لا توجد بيانات
                       </td>
                     </tr>
                   ) : (
-                    filteredItems.map((item) => (
+                    paginatedItems.map((item) => (
                       <tr key={item.id} className="border-t border-slate-100">
-                        <td className="table-td font-bold">{item.pileName}</td>
+                        <td className="table-td font-bold">
+                          {item.pileName || "-"}
+                        </td>
 
                         <td className="table-td">
                           <span className="badge bg-green-50 text-green-700">
@@ -181,6 +225,7 @@ export default function HeapsPage() {
 
                         <td className="table-td">{item.farmName || "-"}</td>
                         <td className="table-td">{item.sprinklerName || "-"}</td>
+
                         <td className="table-td">
                           {item.bricksCount || "غير محدد"}
                         </td>
@@ -189,17 +234,32 @@ export default function HeapsPage() {
                           <div className="flex gap-2">
                             <Link
                               href={`/heaps/${item.id}`}
-                              className="badge bg-blue-50 text-blue-700"
+                              className="btn-secondary !p-2"
+                              title="عرض"
                             >
-                              عرض
+                              <FontAwesomeIcon icon={faEye} />
                             </Link>
 
-                            <Link
-                              href={`/heaps/edit/${item.id}`}
-                              className="badge bg-emerald-50 text-emerald-700"
-                            >
-                              تعديل
-                            </Link>
+                            {canManage && (
+                              <>
+                                <Link
+                                  href={`/heaps/edit/${item.id}`}
+                                  className="btn-secondary !p-2"
+                                  title="تعديل"
+                                >
+                                  <FontAwesomeIcon icon={faPen} />
+                                </Link>
+
+                                <button
+                                  type="button"
+                                  onClick={() => remove(item.id)}
+                                  className="btn-danger !p-2"
+                                  title="حذف"
+                                >
+                                  <FontAwesomeIcon icon={faTrash} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -209,32 +269,31 @@ export default function HeapsPage() {
               </table>
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1 || pageLoading}
-                onClick={() =>
-                  loadHeapsPage(
-                    currentPage - 1,
-                    pageCursors[currentPage - 1] || null
-                  )
-                }
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filteredItems.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={!hasNextPage || pageLoading}
-                onClick={() =>
-                  loadHeapsPage(currentPage + 1, pageCursors[currentPage + 1])
-                }
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
