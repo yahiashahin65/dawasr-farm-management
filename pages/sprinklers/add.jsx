@@ -295,18 +295,18 @@ export default function AddSprinkler() {
 
                 <div>
                   <label className="form-label">نوع المحصول</label>
-                  <input
-                    list="crop-options"
-                    className="form-input"
-                    value={form.cropType}
-                    onChange={(e) => updateField("cropType", e.target.value)}
-                  />
-
-                  <datalist id="crop-options">
-                    {cropOptions.map((item) => (
-                      <option key={item} value={item} />
-                    ))}
-                  </datalist>
+                  <select
+  className="form-input"
+  value={form.cropType}
+  onChange={(e) => updateField("cropType", e.target.value)}
+>
+  <option value="">اختر نوع المحصول</option>
+  {cropOptions.map((item) => (
+    <option key={item} value={item}>
+      {item}
+    </option>
+  ))}
+</select>
                 </div>
 
                 <div>
