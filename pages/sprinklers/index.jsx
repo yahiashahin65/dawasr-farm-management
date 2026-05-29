@@ -311,6 +311,11 @@ export default function Sprinklers() {
                 </button>
 
                 {canManage && (
+  <Link href="/sprinklers/migrate" className="btn-secondary">
+    تحديث من Excel
+  </Link>
+)}
+                {canManage && (
                   <Link href="/sprinklers/add" className="btn-primary">
                     <FontAwesomeIcon icon={faPlus} />
                     إضافة رشاش
