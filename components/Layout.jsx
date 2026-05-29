@@ -20,6 +20,7 @@ import {
   faSeedling,
   faDroplet,
   faLeaf,
+  faGear,
 } from "@fortawesome/free-solid-svg-icons";
 
 const links = [
@@ -40,6 +41,7 @@ const links = [
   { href: "/kubras", label: "الكِبر", icon: faWarehouse },
   { href: "/asset-types", label: "أنواع الأصول", icon: faLayerGroup },
   { href: "/workers", label: "العمال", icon: faUsers },
+  { href: "/settings", label: "الإعدادات", icon: faGear },
 ];
 
 export default function Layout({ children, title = "مزارع السنبلة" }) {
