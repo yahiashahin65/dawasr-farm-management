@@ -8,18 +8,15 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../lib/systemSettings";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
-
-const MOVEMENT_OPTIONS = [
-  "دائري",
-  "نصف دائري",
-  "ثلاث أرباع دائري",
-  "نصين",
-];
 
 const normalizeGear = (value) => {
   const text = String(value || "").replace(/\s/g, "");
@@ -52,6 +49,12 @@ export default function AddSprinkler() {
   const [farms, setFarms] = useState([]);
   const [workers, setWorkers] = useState([]);
 
+  const [settingOptions, setSettingOptions] = useState({
+    sprinklerMovement: DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+    cropType: DEFAULT_SYSTEM_SETTINGS.cropType,
+    gearType: DEFAULT_SYSTEM_SETTINGS.gearType,
+  });
+
   const [form, setForm] = useState({
     name: "",
     farmName: "",
@@ -71,9 +74,14 @@ export default function AddSprinkler() {
       setInitialLoading(true);
 
       try {
-        const [farmsSnap, workersSnap] = await Promise.all([
+        const [farmsSnap, workersSnap, settings] = await Promise.all([
           getDocs(collection(db, "farms")),
           getDocs(collection(db, "workers")),
+          loadMultipleSettingOptions([
+            "sprinklerMovement",
+            "cropType",
+            "gearType",
+          ]),
         ]);
 
         setFarms(
@@ -89,6 +97,14 @@ export default function AddSprinkler() {
             ...d.data(),
           }))
         );
+
+        setSettingOptions({
+          sprinklerMovement:
+            settings.sprinklerMovement ||
+            DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+          cropType: settings.cropType || DEFAULT_SYSTEM_SETTINGS.cropType,
+          gearType: settings.gearType || DEFAULT_SYSTEM_SETTINGS.gearType,
+        });
       } finally {
         setInitialLoading(false);
       }
@@ -103,22 +119,20 @@ export default function AddSprinkler() {
   );
 
   const gearOptions = useMemo(
-    () => [
-      "1/1",
-      "1/1 (300)",
-      "1/1 (350)",
-      "1/1 (425)",
-      "10/11",
-      "10/11 (400)",
-      "10/11 (425)",
-      "5/6 (350)",
-    ],
-    []
+    () => settingOptions.gearType || DEFAULT_SYSTEM_SETTINGS.gearType,
+    [settingOptions.gearType]
   );
 
   const cropOptions = useMemo(
-    () => ["برسيم", "رودس", "ذرة", "قمح", "شعير", "غير محدد"],
-    []
+    () => settingOptions.cropType || DEFAULT_SYSTEM_SETTINGS.cropType,
+    [settingOptions.cropType]
+  );
+
+  const movementOptions = useMemo(
+    () =>
+      settingOptions.sprinklerMovement ||
+      DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+    [settingOptions.sprinklerMovement]
   );
 
   const updateField = (key, value) => {
@@ -214,7 +228,7 @@ export default function AddSprinkler() {
           <AppLoader
             variant="compact"
             title="جاري تجهيز صفحة الإضافة..."
-            subtitle="يتم تحميل المزارع والعمال"
+            subtitle="يتم تحميل المزارع والعمال والإعدادات"
           />
         ) : (
           <form onSubmit={submit} className="grid gap-5 lg:grid-cols-3">
@@ -303,7 +317,7 @@ export default function AddSprinkler() {
                     onChange={(e) => updateField("movementType", e.target.value)}
                   >
                     <option value="">اختر الحركة</option>
-                    {MOVEMENT_OPTIONS.map((item) => (
+                    {movementOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
@@ -400,4 +414,4 @@ export default function AddSprinkler() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
