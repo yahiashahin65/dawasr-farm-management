@@ -59,6 +59,7 @@ export default function AddSprinkler() {
     gearName: "",
     cropType: "",
     movementType: "",
+    towersCount: "",
     workerId: "",
     workerName: "",
     imageUrl: "",
@@ -187,6 +188,7 @@ export default function AddSprinkler() {
         gearName: cleanedGearName,
         cropType: form.cropType,
         movementType: form.movementType,
+        towersCount: Number(form.towersCount || 0),
         workerId: form.workerId,
         workerName: form.workerName,
         imageUrl: form.imageUrl || "",
@@ -307,7 +309,19 @@ export default function AddSprinkler() {
                   </select>
                 </div>
 
-                <div className="md:col-span-2">
+                <div>
+                  <label className="form-label">عدد الأبراج</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input"
+                    value={form.towersCount}
+                    onChange={(e) => updateField("towersCount", e.target.value)}
+                    placeholder="مثال: 8"
+                  />
+                </div>
+
+                <div>
                   <label className="form-label">العامل</label>
                   <select
                     className="form-input"
