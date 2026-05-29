@@ -3,6 +3,10 @@ import Link from "next/link";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../lib/systemSettings";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -27,6 +31,9 @@ const movementTypeLabel = (type) => {
 export default function AssetMovements() {
   const [movements, setMovements] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [statusOptions, setStatusOptions] = useState(
+    DEFAULT_SYSTEM_SETTINGS.assetStatus
+  );
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,12 +77,22 @@ export default function AssetMovements() {
     );
   };
 
+  const loadSettings = async () => {
+    const settings = await loadMultipleSettingOptions(["assetStatus"]);
+
+    setStatusOptions(
+      settings.assetStatus?.length
+        ? settings.assetStatus
+        : DEFAULT_SYSTEM_SETTINGS.assetStatus
+    );
+  };
+
   useEffect(() => {
     const loadInitialData = async () => {
       setInitialLoading(true);
 
       try {
-        await Promise.all([loadAssets(), loadMovements()]);
+        await Promise.all([loadAssets(), loadMovements(), loadSettings()]);
       } finally {
         setInitialLoading(false);
       }
@@ -93,6 +110,24 @@ export default function AssetMovements() {
 
     return map;
   }, [assets]);
+
+  const finalStatusOptions = useMemo(() => {
+    const oldStatuses = movements
+      .map((movement) => {
+        const asset = assetMap[movement.assetId];
+        return movement.status || asset?.status || "";
+      })
+      .filter(Boolean);
+
+    return Array.from(
+      new Set([
+        ...(statusOptions.length
+          ? statusOptions
+          : DEFAULT_SYSTEM_SETTINGS.assetStatus),
+        ...oldStatuses,
+      ])
+    );
+  }, [statusOptions, movements, assetMap]);
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -182,9 +217,11 @@ export default function AssetMovements() {
                 onChange={(e) => updateFilter("status", e.target.value)}
               >
                 <option value="">كل الحالات</option>
-                <option value="صالح">صالح</option>
-                <option value="عاطل">عاطل</option>
-                <option value="في الورشة">في الورشة</option>
+                {finalStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -207,7 +244,6 @@ export default function AssetMovements() {
                 <option value="asset">معدة</option>
                 <option value="spare_part">قطعة غيار</option>
                 <option value="tool">أداة</option>
-                <option value="material">مواد</option>
               </select>
             </div>
 
@@ -236,7 +272,8 @@ export default function AssetMovements() {
                 <tbody>
                   {paginatedMovements.map((movement) => {
                     const asset = assetMap[movement.assetId];
-                    const category = movement.category || asset?.category || "asset";
+                    const category =
+                      movement.category || asset?.category || "asset";
                     const status = movement.status || asset?.status || "-";
 
                     return (
