@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
 import {
   BarChart,
   Bar,
@@ -17,6 +16,8 @@ import {
 } from "recharts";
 
 import { db } from "../lib/firebase";
+import { subscribeCachedCollection } from "../lib/realtimeCache";
+
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
 import AppLoader from "../components/AppLoader";
@@ -312,33 +313,92 @@ export default function Analytics() {
   const [sprinklers, setSprinklers] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [loadedMap, setLoadedMap] = useState({});
+  const [realtimeError, setRealtimeError] = useState("");
+
+  const markLoaded = (key) => {
+    setLoadedMap((prev) => ({
+      ...prev,
+      [key]: true,
+    }));
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      setInitialLoading(true);
+    const unsubscribes = [];
 
-      try {
-        const [assetsSnap, heapsSnap, sprinklersSnap, workersSnap] =
-          await Promise.all([
-            getDocs(collection(db, "assets")),
-            getDocs(collection(db, "heaps")),
-            getDocs(collection(db, "sprinklers")),
-            getDocs(collection(db, "workers")),
-          ]);
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assets",
+        cacheKey: "cache:assets",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setAssets(data);
+          markLoaded("assets");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا"),
+      })
+    );
 
-        setAssets(assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setHeaps(heapsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setSprinklers(
-          sprinklersSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        );
-        setWorkers(workersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } finally {
-        setInitialLoading(false);
-      }
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "heaps",
+        cacheKey: "cache:heaps",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setHeaps(data);
+          markLoaded("heaps");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "sprinklers",
+        cacheKey: "cache:sprinklers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setSprinklers(data);
+          markLoaded("sprinklers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "workers",
+        cacheKey: "cache:workers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setWorkers(data);
+          markLoaded("workers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات العمال لحظيًا"),
+      })
+    );
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe?.());
     };
-
-    loadData();
   }, []);
+
+  useEffect(() => {
+    const required = ["assets", "heaps", "sprinklers", "workers"];
+    const done = required.every((key) => loadedMap[key]);
+
+    if (done) {
+      setInitialLoading(false);
+    }
+  }, [loadedMap]);
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
@@ -447,6 +507,12 @@ export default function Analytics() {
           />
         ) : (
           <div className="space-y-6">
+            {realtimeError && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="إجمالي الأصول"
