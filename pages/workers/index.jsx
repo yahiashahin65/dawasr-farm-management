@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -17,13 +11,13 @@ import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-
 import {
   faPlus,
   faPen,
   faTrash,
   faEye,
   faMagnifyingGlass,
+  faBroom,
 } from "@fortawesome/free-solid-svg-icons";
 
 const PAGE_SIZE = 10;
@@ -33,35 +27,25 @@ export default function Workers() {
 
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
-
   const [initialLoading, setInitialLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const loadWorkers = async () => {
-    const snap = await getDocs(
-      query(collection(db, "workers"), orderBy("createdAt", "desc"))
-    );
-
-    setItems(
-      snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribe = subscribeCachedCollection({
+      db,
+      collectionName: "workers",
+      cacheKey: "cache:workers",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات العمال لحظيًا");
+      },
+    });
 
-      try {
-        await loadWorkers();
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadInitialData();
+    return () => unsubscribe?.();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -80,7 +64,19 @@ export default function Workers() {
     });
   }, [items, search]);
 
+  const totalNationalities = useMemo(() => {
+    return new Set(
+      filteredItems.map((worker) => worker.nationality || "").filter(Boolean)
+    ).size;
+  }, [filteredItems]);
+
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedItems = useMemo(() => {
     return filteredItems.slice(
@@ -89,13 +85,16 @@ export default function Workers() {
     );
   }, [filteredItems, currentPage]);
 
+  const clearFilters = () => {
+    setSearch("");
+    setCurrentPage(1);
+  };
+
   const remove = async (id) => {
     if (!canManage) return;
 
     if (confirm("هل تريد حذف العامل؟")) {
       await deleteDoc(doc(db, "workers", id));
-
-      await loadWorkers();
 
       if (paginatedItems.length === 1 && currentPage > 1) {
         setCurrentPage((prev) => prev - 1);
@@ -114,6 +113,32 @@ export default function Workers() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي العمال
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {filteredItems.length}
+                </h3>
+              </div>
+
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">
+                  عدد الجنسيات
+                </p>
+                <h3 className="mt-2 text-4xl font-black text-slate-900">
+                  {totalNationalities}
+                </h3>
+              </div>
+            </div>
+
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="page-card flex flex-1 items-center gap-2 p-3">
                 <FontAwesomeIcon
@@ -132,11 +157,19 @@ export default function Workers() {
                 />
               </div>
 
-              {canManage && (
-                <Link href="/workers/add" className="btn-primary">
-                  <FontAwesomeIcon icon={faPlus} /> إضافة عامل
-                </Link>
-              )}
+              <div className="flex flex-wrap gap-2">
+                <button onClick={clearFilters} className="btn-secondary">
+                  <FontAwesomeIcon icon={faBroom} />
+                  مسح البحث
+                </button>
+
+                {canManage && (
+                  <Link href="/workers/add" className="btn-primary">
+                    <FontAwesomeIcon icon={faPlus} />
+                    إضافة عامل
+                  </Link>
+                )}
+              </div>
             </div>
 
             <div className="mb-3 text-sm font-bold text-slate-500">
@@ -158,7 +191,10 @@ export default function Workers() {
                 <tbody>
                   {paginatedItems.map((worker) => (
                     <tr key={worker.id} className="border-t">
-                      <td className="table-td font-bold">{worker.name}</td>
+                      <td className="table-td font-bold">
+                        {worker.name || "-"}
+                      </td>
+
                       <td className="table-td">{worker.phone || "-"}</td>
                       <td className="table-td">{worker.nationality || "-"}</td>
 
@@ -204,27 +240,29 @@ export default function Workers() {
               </table>
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filteredItems.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">
-                صفحة {currentPage} من {totalPages}
-              </span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
