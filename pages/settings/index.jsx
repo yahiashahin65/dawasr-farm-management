@@ -22,6 +22,7 @@ const SETTING_TYPES = [
   { value: "cropType", label: "أنواع المحاصيل" },
   { value: "gearType", label: "أنواع الجير" },
   { value: "assetStatus", label: "حالات الأصول" },
+  { value: "externalWorkshop", label: "الورش الخارجية" },
 ];
 
 export default function SettingsPage() {
