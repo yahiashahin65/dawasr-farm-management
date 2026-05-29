@@ -10,18 +10,15 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../../lib/firebase";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../../lib/systemSettings";
 
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
 import useUserRole from "../../../hooks/useUserRole";
-
-const MOVEMENT_OPTIONS = [
-  "دائري",
-  "نصف دائري",
-  "ثلاث أرباع دائري",
-  "نصين",
-];
 
 const normalizeGear = (value) => {
   const text = String(value || "").replace(/\s/g, "");
@@ -58,6 +55,11 @@ const getHectareValue = (data) =>
   data?.hiktar ??
   "";
 
+const mergeCurrentValue = (options, value) => {
+  if (!value) return options;
+  return options.includes(value) ? options : [value, ...options];
+};
+
 export default function EditSprinkler() {
   const router = useRouter();
   const { id } = router.query;
@@ -69,6 +71,12 @@ export default function EditSprinkler() {
   const [farms, setFarms] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [items, setItems] = useState([]);
+
+  const [settingOptions, setSettingOptions] = useState({
+    sprinklerMovement: DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+    cropType: DEFAULT_SYSTEM_SETTINGS.cropType,
+    gearType: DEFAULT_SYSTEM_SETTINGS.gearType,
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -91,13 +99,23 @@ export default function EditSprinkler() {
       setInitialLoading(true);
 
       try {
-        const [sprinklerSnap, farmsSnap, workersSnap, sprinklersSnap] =
-          await Promise.all([
-            getDoc(doc(db, "sprinklers", id)),
-            getDocs(collection(db, "farms")),
-            getDocs(collection(db, "workers")),
-            getDocs(collection(db, "sprinklers")),
-          ]);
+        const [
+          sprinklerSnap,
+          farmsSnap,
+          workersSnap,
+          sprinklersSnap,
+          settings,
+        ] = await Promise.all([
+          getDoc(doc(db, "sprinklers", id)),
+          getDocs(collection(db, "farms")),
+          getDocs(collection(db, "workers")),
+          getDocs(collection(db, "sprinklers")),
+          loadMultipleSettingOptions([
+            "sprinklerMovement",
+            "cropType",
+            "gearType",
+          ]),
+        ]);
 
         if (!sprinklerSnap.exists()) {
           alert("الرشاش غير موجود");
@@ -141,6 +159,14 @@ export default function EditSprinkler() {
             ...d.data(),
           }))
         );
+
+        setSettingOptions({
+          sprinklerMovement:
+            settings.sprinklerMovement ||
+            DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+          cropType: settings.cropType || DEFAULT_SYSTEM_SETTINGS.cropType,
+          gearType: settings.gearType || DEFAULT_SYSTEM_SETTINGS.gearType,
+        });
       } finally {
         setInitialLoading(false);
       }
@@ -159,30 +185,31 @@ export default function EditSprinkler() {
     );
   }, [items]);
 
-  const gearOptions = useMemo(
-    () => [
-      "1/1",
-      "1/1 (300)",
-      "1/1 (350)",
-      "1/1 (425)",
-      "10/11",
-      "10/11 (400)",
-      "10/11 (425)",
-      "5/6 (350)",
-    ],
-    []
-  );
+  const gearOptions = useMemo(() => {
+    return mergeCurrentValue(
+      settingOptions.gearType || DEFAULT_SYSTEM_SETTINGS.gearType,
+      form.gearName
+    );
+  }, [settingOptions.gearType, form.gearName]);
 
   const cropOptions = useMemo(() => {
-    const defaults = ["برسيم", "رودس", "ذرة", "قمح", "شعير", "غير محدد"];
+    const baseOptions =
+      settingOptions.cropType || DEFAULT_SYSTEM_SETTINGS.cropType;
+
+    const oldValues = items.map((item) => item.cropType || "").filter(Boolean);
 
     return Array.from(
-      new Set([
-        ...defaults,
-        ...items.map((item) => item.cropType || "").filter(Boolean),
-      ])
+      new Set(mergeCurrentValue([...baseOptions, ...oldValues], form.cropType))
     );
-  }, [items]);
+  }, [items, settingOptions.cropType, form.cropType]);
+
+  const movementOptions = useMemo(() => {
+    return mergeCurrentValue(
+      settingOptions.sprinklerMovement ||
+        DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+      form.movementType
+    );
+  }, [settingOptions.sprinklerMovement, form.movementType]);
 
   const updateField = (key, value) => {
     setForm((prev) => ({
@@ -276,7 +303,7 @@ export default function EditSprinkler() {
           <AppLoader
             variant="compact"
             title="جاري تحميل بيانات الرشاش..."
-            subtitle="يتم تجهيز بيانات التعديل"
+            subtitle="يتم تجهيز بيانات التعديل والإعدادات"
           />
         ) : (
           <form onSubmit={submit} className="grid gap-5 lg:grid-cols-3">
@@ -365,7 +392,7 @@ export default function EditSprinkler() {
                     onChange={(e) => updateField("movementType", e.target.value)}
                   >
                     <option value="">اختر الحركة</option>
-                    {MOVEMENT_OPTIONS.map((item) => (
+                    {movementOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
