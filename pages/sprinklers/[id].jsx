@@ -30,6 +30,13 @@ const getTowersCount = (item) =>
   item?.towers ??
   "";
 
+const getHectareNumber = (item) =>
+  item?.hectareNumber ??
+  item?.hectare ??
+  item?.hectar ??
+  item?.hiktar ??
+  "";
+
 function InfoCard({ label, value, href = null }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4">
@@ -157,6 +164,11 @@ export default function SprinklerDetails() {
                   <InfoCard
                     label="عدد الأبراج"
                     value={getTowersCount(item)}
+                  />
+
+                  <InfoCard
+                    label="الهكتار"
+                    value={getHectareNumber(item)}
                   />
 
                   <InfoCard
