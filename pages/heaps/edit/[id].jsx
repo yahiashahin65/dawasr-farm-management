@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import {
   collection,
@@ -8,18 +8,26 @@ import {
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
+
 import { db } from "../../../lib/firebase";
 import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../../lib/systemSettings";
+
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 
-const cropTypes = ["برسيم", "رودس", "تبن", "غير معلوم"];
+const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
 export default function EditHeapPage() {
   const router = useRouter();
   const { id } = router.query;
 
   const [farms, setFarms] = useState([]);
+  const [cropOptions, setCropOptions] = useState(DEFAULT_HEAP_CROP_TYPES);
+
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
 
@@ -38,17 +46,28 @@ export default function EditHeapPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const loadFarms = async () => {
-      const farmsSnap = await getDocs(collection(db, "farms"));
+    const loadData = async () => {
+      const [farmsSnap, settings] = await Promise.all([
+        getDocs(collection(db, "farms")),
+        loadMultipleSettingOptions(["cropType"]),
+      ]);
 
       const cleanFarms = farmsSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((item) => item.name && item.name.trim() !== "");
 
       setFarms(cleanFarms);
+
+      const settingsCropTypes = settings.cropType || [];
+
+      setCropOptions(
+        settingsCropTypes.length
+          ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
+          : DEFAULT_HEAP_CROP_TYPES
+      );
     };
 
-    loadFarms();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -102,6 +121,15 @@ export default function EditHeapPage() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [image]);
 
+  const finalCropOptions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...(cropOptions.length ? cropOptions : DEFAULT_SYSTEM_SETTINGS.cropType),
+        form.cropType,
+      ].filter(Boolean))
+    );
+  }, [cropOptions, form.cropType]);
+
   const uploadImage = async () => {
     if (!image) return form.imageUrl || "";
     return fileToFirestoreImage(image);
@@ -145,9 +173,7 @@ export default function EditHeapPage() {
 
         sprinklerName: form.sprinklerName.trim(),
 
-        bricksCount: form.bricksCount
-          ? Number(form.bricksCount)
-          : null,
+        bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
 
         imageUrl,
         notes: form.notes.trim(),
@@ -205,7 +231,8 @@ export default function EditHeapPage() {
                   setForm({ ...form, cropType: e.target.value })
                 }
               >
-                {cropTypes.map((type) => (
+                <option value="">اختر نوع المحصول</option>
+                {finalCropOptions.map((type) => (
                   <option key={type} value={type}>
                     {type}
                   </option>
