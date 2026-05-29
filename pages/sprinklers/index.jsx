@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
@@ -58,8 +53,8 @@ export default function Sprinklers() {
 
   const [items, setItems] = useState([]);
   const [farms, setFarms] = useState([]);
-  const [machines, setMachines] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -69,43 +64,47 @@ export default function Sprinklers() {
     machineName: "",
   });
 
-  const loadData = async () => {
-    const [sprinklersSnap, farmsSnap] = await Promise.all([
-      getDocs(query(collection(db, "sprinklers"), orderBy("createdAt", "desc"))),
-      getDocs(collection(db, "farms")),
-    ]);
+  useEffect(() => {
+    const unsubscribeSprinklers = subscribeCachedCollection({
+      db,
+      collectionName: "sprinklers",
+      cacheKey: "cache:sprinklers",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا");
+      },
+    });
 
-    const sprinklers = sprinklersSnap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
+    const unsubscribeFarms = subscribeCachedCollection({
+      db,
+      collectionName: "farms",
+      cacheKey: "cache:farms",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setFarms,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا");
+      },
+    });
 
-    setItems(sprinklers);
-    setFarms(farmsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    return () => {
+      unsubscribeSprinklers?.();
+      unsubscribeFarms?.();
+    };
+  }, []);
 
-    setMachines(
-      Array.from(
-        new Set(
-          sprinklers
-            .map((item) => item.machineName || item.machine || "")
-            .filter(Boolean)
-        )
+  const machines = useMemo(() => {
+    return Array.from(
+      new Set(
+        items
+          .map((item) => item.machineName || item.machine || "")
+          .filter(Boolean)
       )
     );
-  };
-
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
-      try {
-        await loadData();
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadInitialData();
-  }, []);
+  }, [items]);
 
   const updateFilter = (key, value) => {
     setCurrentPage(1);
@@ -191,7 +190,6 @@ export default function Sprinklers() {
 
     if (confirm("هل تريد حذف الرشاش؟")) {
       await deleteDoc(doc(db, "sprinklers", id));
-      await loadData();
 
       if (paginatedItems.length === 1 && currentPage > 1) {
         setCurrentPage((prev) => prev - 1);
@@ -210,9 +208,17 @@ export default function Sprinklers() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 grid gap-3 md:grid-cols-4">
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">إجمالي الرشاشات</p>
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الرشاشات
+                </p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {filteredItems.length}
                 </h3>
@@ -226,14 +232,18 @@ export default function Sprinklers() {
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">عدد أنواع المكاين</p>
+                <p className="text-sm font-bold text-slate-500">
+                  عدد أنواع المكاين
+                </p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalMachines}
                 </h3>
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">إجمالي الأبراج</p>
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الأبراج
+                </p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {totalTowers}
                 </h3>
@@ -242,7 +252,10 @@ export default function Sprinklers() {
 
             <div className="page-card mb-4 grid gap-3 p-3 lg:grid-cols-4">
               <div className="flex items-center gap-2 lg:col-span-2">
-                <FontAwesomeIcon icon={faMagnifyingGlass} className="text-slate-400" />
+                <FontAwesomeIcon
+                  icon={faMagnifyingGlass}
+                  className="text-slate-400"
+                />
 
                 <input
                   className="w-full bg-transparent p-2 outline-none"
@@ -294,7 +307,6 @@ export default function Sprinklers() {
                   مسح الفلاتر
                 </button>
 
-
                 {canManage && (
                   <Link href="/sprinklers/add" className="btn-primary">
                     <FontAwesomeIcon icon={faPlus} />
@@ -342,8 +354,15 @@ export default function Sprinklers() {
                       </td>
 
                       <td className="table-td">{item.farmName || "-"}</td>
-                      <td className="table-td">{item.machineName || item.machine || "-"}</td>
-                      <td className="table-td">{item.gearName || item.gear || "-"}</td>
+
+                      <td className="table-td">
+                        {item.machineName || item.machine || "-"}
+                      </td>
+
+                      <td className="table-td">
+                        {item.gearName || item.gear || "-"}
+                      </td>
+
                       <td className="table-td">{item.cropType || "-"}</td>
 
                       <td className="table-td">
@@ -377,7 +396,10 @@ export default function Sprinklers() {
 
                       <td className="table-td">
                         <div className="flex gap-2">
-                          <Link href={`/sprinklers/${item.id}`} className="btn-secondary !p-2">
+                          <Link
+                            href={`/sprinklers/${item.id}`}
+                            className="btn-secondary !p-2"
+                          >
                             <FontAwesomeIcon icon={faEye} />
                           </Link>
 
