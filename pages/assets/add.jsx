@@ -7,12 +7,16 @@ import {
   writeBatch,
   doc,
 } from "firebase/firestore";
+
 import { db } from "../../lib/firebase";
 import { fileToFirestoreImage } from "../../lib/imageToFirestore";
+import {
+  loadMultipleSettingOptions,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../lib/systemSettings";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
-
-const statuses = ["صالح", "عاطل", "في الورشة"];
 
 const categories = [
   { value: "asset", label: "معدة" },
@@ -27,6 +31,12 @@ export default function AddAsset() {
   const [farms, setFarms] = useState([]);
   const [kubras, setKubras] = useState([]);
   const [types, setTypes] = useState([]);
+
+  const [statusOptions, setStatusOptions] = useState(
+    DEFAULT_SYSTEM_SETTINGS.assetStatus
+  );
+  const [workshopOptions, setWorkshopOptions] = useState([]);
+
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,12 +56,13 @@ export default function AddAsset() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [workersSnap, farmsSnap, kubrasSnap, typesSnap] =
+      const [workersSnap, farmsSnap, kubrasSnap, typesSnap, settings] =
         await Promise.all([
           getDocs(collection(db, "workers")),
           getDocs(collection(db, "farms")),
           getDocs(collection(db, "kubras")),
           getDocs(collection(db, "assetTypes")),
+          loadMultipleSettingOptions(["assetStatus", "externalWorkshop"]),
         ]);
 
       const clean = (snap) =>
@@ -63,6 +74,14 @@ export default function AddAsset() {
       setFarms(clean(farmsSnap));
       setKubras(clean(kubrasSnap));
       setTypes(clean(typesSnap));
+
+      setStatusOptions(
+        settings.assetStatus?.length
+          ? settings.assetStatus
+          : DEFAULT_SYSTEM_SETTINGS.assetStatus
+      );
+
+      setWorkshopOptions(settings.externalWorkshop || []);
     };
 
     loadData();
@@ -79,6 +98,9 @@ export default function AddAsset() {
 
     return () => URL.revokeObjectURL(previewUrl);
   }, [image]);
+
+  const isExternalWorkshop =
+    form.placeType === "external_workshop" || form.status === "في الورشة";
 
   const places = useMemo(() => {
     if (form.placeType === "farm") return farms;
@@ -105,8 +127,6 @@ export default function AddAsset() {
 
     if (loading) return;
 
-    const isExternalWorkshop = form.placeType === "external_workshop";
-
     if (!form.name.trim() || !form.assetTypeId) {
       alert("اسم الأصل ونوع الأصل مطلوبين");
       return;
@@ -118,7 +138,7 @@ export default function AddAsset() {
     }
 
     if (isExternalWorkshop && !form.externalWorkshopName.trim()) {
-      alert("اسم الورشة الخارجية مطلوب");
+      alert("اختر الورشة الخارجية");
       return;
     }
 
@@ -130,6 +150,10 @@ export default function AddAsset() {
         : places.find((f) => f.id === form.placeId);
 
       const placeId = isExternalWorkshop ? "" : form.placeId;
+      const placeType = isExternalWorkshop
+        ? "external_workshop"
+        : form.placeType;
+
       const placeName = isExternalWorkshop
         ? form.externalWorkshopName.trim()
         : place?.name || "";
@@ -153,27 +177,26 @@ export default function AddAsset() {
         assetTypeId: form.assetTypeId,
         assetTypeName: type?.name || "",
 
-        status:
-          form.placeType === "external_workshop" ? "في الورشة" : form.status,
+        status: isExternalWorkshop ? "في الورشة" : form.status,
 
-        placeType: form.placeType,
+        placeType,
         placeId,
         placeName,
 
         currentPlace: {
-          type: form.placeType,
+          type: placeType,
           id: placeId,
           name: placeName,
         },
 
-        farmId: form.placeType === "farm" ? form.placeId : "",
-        farmName: form.placeType === "farm" ? placeName : "",
+        farmId: placeType === "farm" ? form.placeId : "",
+        farmName: placeType === "farm" ? placeName : "",
 
-        kubraId: form.placeType === "kubra" ? form.placeId : "",
-        kubraName: form.placeType === "kubra" ? placeName : "",
+        kubraId: placeType === "kubra" ? form.placeId : "",
+        kubraName: placeType === "kubra" ? placeName : "",
 
         externalWorkshopName:
-          form.placeType === "external_workshop" ? placeName : "",
+          placeType === "external_workshop" ? placeName : "",
 
         workerIds: form.workerIds,
         workers: selectedWorkers.map((w) => ({
@@ -202,7 +225,7 @@ export default function AddAsset() {
         fromPlaceType: "",
         fromPlaceName: "",
 
-        toPlaceType: form.placeType,
+        toPlaceType: placeType,
         toPlaceId: placeId,
         toPlaceName: placeName,
 
@@ -277,39 +300,49 @@ export default function AddAsset() {
             <select
               className="form-input"
               value={form.placeType}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextPlaceType = e.target.value;
+
                 setForm({
                   ...form,
-                  placeType: e.target.value,
+                  placeType: nextPlaceType,
                   placeId: "",
                   externalWorkshopName: "",
                   status:
-                    e.target.value === "external_workshop"
+                    nextPlaceType === "external_workshop"
                       ? "في الورشة"
                       : form.status === "في الورشة"
                       ? "صالح"
                       : form.status,
-                })
-              }
+                });
+              }}
             >
               <option value="farm">داخل مزرعة</option>
               <option value="kubra">داخل الكِبرة</option>
               <option value="external_workshop">ورشة خارجية</option>
             </select>
 
-            {form.placeType === "external_workshop" ? (
-              <input
+            {isExternalWorkshop ? (
+              <select
                 className="form-input"
-                placeholder="اسم الورشة الخارجية"
                 value={form.externalWorkshopName}
                 onChange={(e) =>
                   setForm({
                     ...form,
                     externalWorkshopName: e.target.value,
+                    placeType: "external_workshop",
+                    placeId: "",
                     status: "في الورشة",
                   })
                 }
-              />
+              >
+                <option value="">اختر الورشة الخارجية</option>
+                {workshopOptions.map((workshop) => (
+                  <option key={workshop} value={workshop}>
+                    {workshop}
+                  </option>
+                ))}
+              </select>
             ) : (
               <select
                 className="form-input"
@@ -330,16 +363,40 @@ export default function AddAsset() {
             <select
               className="form-input"
               value={form.status}
-              disabled={form.placeType === "external_workshop"}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              disabled={isExternalWorkshop}
+              onChange={(e) => {
+                const nextStatus = e.target.value;
+
+                setForm({
+                  ...form,
+                  status: nextStatus,
+                  placeType:
+                    nextStatus === "في الورشة"
+                      ? "external_workshop"
+                      : form.placeType === "external_workshop"
+                      ? "farm"
+                      : form.placeType,
+                  placeId: nextStatus === "في الورشة" ? "" : form.placeId,
+                  externalWorkshopName:
+                    nextStatus === "في الورشة"
+                      ? form.externalWorkshopName
+                      : "",
+                });
+              }}
             >
-              {statuses.map((x) => (
+              {statusOptions.map((x) => (
                 <option key={x} value={x}>
                   {x}
                 </option>
               ))}
             </select>
           </div>
+
+          {isExternalWorkshop && workshopOptions.length === 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+              لا توجد ورش خارجية في الإعدادات. أضف الورش من صفحة إعدادات النظام أولًا.
+            </div>
+          )}
 
           <div>
             <label className="mb-2 block text-sm font-black text-slate-700">
