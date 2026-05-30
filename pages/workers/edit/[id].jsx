@@ -11,6 +11,7 @@ import {
 
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
+import AppLoader from "../../../components/AppLoader";
 
 const getWorkerFromCache = (workerId) => {
   const cached = getCachedCollection("cache:workers");
@@ -19,7 +20,6 @@ const getWorkerFromCache = (workerId) => {
 
 const updateWorkerCache = (workerId, payload) => {
   const cached = getCachedCollection("cache:workers");
-
   const exists = cached.some((item) => item.id === workerId);
 
   const updatedItem = {
@@ -37,6 +37,47 @@ const updateWorkerCache = (workerId, payload) => {
     : [updatedItem, ...cached];
 
   setCachedCollection("cache:workers", next);
+};
+
+const updateRelatedWorkerCache = (workerId, workerName, workerPhone) => {
+  const cachedAssets = getCachedCollection("cache:assets");
+
+  setCachedCollection(
+    "cache:assets",
+    cachedAssets.map((asset) => {
+      if (!(asset.workerIds || []).includes(workerId)) return asset;
+
+      const workers = Array.isArray(asset.workers)
+        ? asset.workers.map((worker) =>
+            worker.id === workerId
+              ? { ...worker, name: workerName, phone: workerPhone }
+              : worker
+          )
+        : [];
+
+      return {
+        ...asset,
+        workers,
+        workerNames: workers.map((worker) => worker.name).join("، "),
+        updatedAt: new Date().toISOString(),
+      };
+    })
+  );
+
+  const cachedSprinklers = getCachedCollection("cache:sprinklers");
+
+  setCachedCollection(
+    "cache:sprinklers",
+    cachedSprinklers.map((sprinkler) =>
+      sprinkler.workerId === workerId
+        ? {
+            ...sprinkler,
+            workerName,
+            updatedAt: new Date().toISOString(),
+          }
+        : sprinkler
+    )
+  );
 };
 
 export default function EditWorker() {
@@ -139,9 +180,10 @@ export default function EditWorker() {
     };
 
     try {
-      if (!isOnline()) {
-        updateWorkerCache(id, payload);
+      updateWorkerCache(id, payload);
+      updateRelatedWorkerCache(id, payload.name, payload.phone);
 
+      if (!isOnline()) {
         addOfflineOperation({
           collectionName: "workers",
           operation: "update",
@@ -156,6 +198,21 @@ export default function EditWorker() {
           },
         });
 
+        addOfflineOperation({
+          collectionName: "workers",
+          operation: "update-related-worker-name",
+          documentId: id,
+          payload: {
+            workerId: id,
+            workerName: payload.name,
+            workerPhone: payload.phone,
+          },
+          meta: {
+            label: "تحديث اسم العامل في الأصول والرشاشات",
+            name: payload.name,
+          },
+        });
+
         alert("تم حفظ تعديل العامل محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/workers/${id}`);
         return;
@@ -166,10 +223,19 @@ export default function EditWorker() {
         updatedAt: serverTimestamp(),
       });
 
-      updateWorkerCache(id, {
-        ...payload,
-        isOffline: false,
-        syncStatus: "synced",
+      addOfflineOperation({
+        collectionName: "workers",
+        operation: "update-related-worker-name",
+        documentId: id,
+        payload: {
+          workerId: id,
+          workerName: payload.name,
+          workerPhone: payload.phone,
+        },
+        meta: {
+          label: "تحديث اسم العامل في الأصول والرشاشات",
+          name: payload.name,
+        },
       });
 
       router.push(`/workers/${id}`);
@@ -177,6 +243,7 @@ export default function EditWorker() {
       console.error(error);
 
       updateWorkerCache(id, payload);
+      updateRelatedWorkerCache(id, payload.name, payload.phone);
 
       addOfflineOperation({
         collectionName: "workers",
@@ -192,6 +259,21 @@ export default function EditWorker() {
         },
       });
 
+      addOfflineOperation({
+        collectionName: "workers",
+        operation: "update-related-worker-name",
+        documentId: id,
+        payload: {
+          workerId: id,
+          workerName: payload.name,
+          workerPhone: payload.phone,
+        },
+        meta: {
+          label: "تحديث اسم العامل في الأصول والرشاشات",
+          name: payload.name,
+        },
+      });
+
       alert("تعذر الاتصال، تم حفظ تعديل العامل محليًا وسيتم رفعه عند عودة الاتصال");
       router.push(`/workers/${id}`);
     } finally {
@@ -203,9 +285,11 @@ export default function EditWorker() {
     <ProtectedRoute>
       <Layout title="تعديل بيانات عامل">
         {initialLoading ? (
-          <div className="page-card p-5 font-bold text-slate-500">
-            جاري تحميل بيانات العامل...
-          </div>
+          <AppLoader
+            variant="compact"
+            title="جاري تحميل بيانات العامل..."
+            subtitle="يتم تجهيز بيانات التعديل"
+          />
         ) : (
           <form onSubmit={submit} className="page-card max-w-2xl p-5 space-y-4">
             {offlineNotice && (
