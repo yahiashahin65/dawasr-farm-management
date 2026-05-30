@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
 import {
   loadMultipleSettingOptions,
   DEFAULT_SYSTEM_SETTINGS,
@@ -28,6 +28,24 @@ const movementTypeLabel = (type) => {
   return type || "-";
 };
 
+const formatDate = (value, fallback) => {
+  if (value?.toDate) return value.toDate().toLocaleString("ar-EG");
+
+  if (fallback?.toDate) return fallback.toDate().toLocaleString("ar-EG");
+
+  if (typeof value === "string") {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString("ar-EG");
+  }
+
+  if (typeof fallback === "string") {
+    const date = new Date(fallback);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString("ar-EG");
+  }
+
+  return "-";
+};
+
 export default function AssetMovements() {
   const [movements, setMovements] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -36,6 +54,8 @@ export default function AssetMovements() {
   );
 
   const [initialLoading, setInitialLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
   const [filters, setFilters] = useState({
@@ -47,58 +67,54 @@ export default function AssetMovements() {
 
   const [search, setSearch] = useState("");
 
-  const loadAssets = async () => {
-    const snap = await getDocs(collection(db, "assets"));
-
-    setAssets(
-      snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
-  };
-
-  const loadMovements = async () => {
-    let snap;
-
-    try {
-      snap = await getDocs(
-        query(collection(db, "assetMovements"), orderBy("createdAt", "desc"))
-      );
-    } catch {
-      snap = await getDocs(collection(db, "assetMovements"));
-    }
-
-    setMovements(
-      snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
-  };
-
-  const loadSettings = async () => {
-    const settings = await loadMultipleSettingOptions(["assetStatus"]);
-
-    setStatusOptions(
-      settings.assetStatus?.length
-        ? settings.assetStatus
-        : DEFAULT_SYSTEM_SETTINGS.assetStatus
-    );
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribeMovements = subscribeCachedCollection({
+      db,
+      collectionName: "assetMovements",
+      cacheKey: "cache:assetMovements",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setMovements,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث سجل الحركات لحظيًا");
+      },
+    });
 
+    const unsubscribeAssets = subscribeCachedCollection({
+      db,
+      collectionName: "assets",
+      cacheKey: "cache:assets",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setAssets,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا");
+      },
+    });
+
+    const loadSettings = async () => {
       try {
-        await Promise.all([loadAssets(), loadMovements(), loadSettings()]);
+        const settings = await loadMultipleSettingOptions(["assetStatus"]);
+
+        setStatusOptions(
+          settings.assetStatus?.length
+            ? settings.assetStatus
+            : DEFAULT_SYSTEM_SETTINGS.assetStatus
+        );
+      } catch {
+        setStatusOptions(DEFAULT_SYSTEM_SETTINGS.assetStatus);
       } finally {
-        setInitialLoading(false);
+        setSettingsLoading(false);
       }
     };
 
-    loadInitialData();
+    loadSettings();
+
+    return () => {
+      unsubscribeMovements?.();
+      unsubscribeAssets?.();
+    };
   }, []);
 
   const assetMap = useMemo(() => {
@@ -129,10 +145,28 @@ export default function AssetMovements() {
     );
   }, [statusOptions, movements, assetMap]);
 
+  const sortedMovements = useMemo(() => {
+    return [...movements].sort((a, b) => {
+      const aDate = a.createdAt?.toDate
+        ? a.createdAt.toDate()
+        : a.movedAt?.toDate
+        ? a.movedAt.toDate()
+        : new Date(a.createdAt || a.movedAt || 0);
+
+      const bDate = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : b.movedAt?.toDate
+        ? b.movedAt.toDate()
+        : new Date(b.createdAt || b.movedAt || 0);
+
+      return bDate - aDate;
+    });
+  }, [movements]);
+
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
-    return movements.filter((movement) => {
+    return sortedMovements.filter((movement) => {
       const asset = assetMap[movement.assetId];
 
       const category = movement.category || asset?.category || "asset";
@@ -157,9 +191,15 @@ export default function AssetMovements() {
         (!keyword || text.includes(keyword))
       );
     });
-  }, [movements, assetMap, filters, search]);
+  }, [sortedMovements, assetMap, filters, search]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedMovements = useMemo(() => {
     return filtered.slice(
@@ -177,10 +217,12 @@ export default function AssetMovements() {
     }));
   };
 
+  const isLoading = initialLoading || settingsLoading;
+
   return (
     <ProtectedRoute>
       <Layout title="سجل الحركات">
-        {initialLoading ? (
+        {isLoading ? (
           <AppLoader
             variant="compact"
             title="جاري تحميل سجل الحركات..."
@@ -188,6 +230,12 @@ export default function AssetMovements() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="page-card mb-4 grid gap-3 p-3 lg:grid-cols-5">
               <input
                 className="form-input"
@@ -244,6 +292,7 @@ export default function AssetMovements() {
                 <option value="asset">معدة</option>
                 <option value="spare_part">قطعة غيار</option>
                 <option value="tool">أداة</option>
+                <option value="material">مواد</option>
               </select>
             </div>
 
@@ -279,7 +328,15 @@ export default function AssetMovements() {
                     return (
                       <tr key={movement.id} className="border-t border-slate-100">
                         <td className="table-td font-bold">
-                          {movement.assetName || asset?.name || "-"}
+                          <div className="flex flex-col gap-1">
+                            <span>{movement.assetName || asset?.name || "-"}</span>
+
+                            {movement.syncStatus === "pending" && (
+                              <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                قيد المزامنة
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="table-td">
@@ -313,11 +370,7 @@ export default function AssetMovements() {
                         <td className="table-td">{movement.reason || "-"}</td>
 
                         <td className="table-td">
-                          {movement.movedAt?.toDate
-                            ? movement.movedAt.toDate().toLocaleString("ar-EG")
-                            : movement.createdAt?.toDate
-                            ? movement.createdAt.toDate().toLocaleString("ar-EG")
-                            : "-"}
+                          {formatDate(movement.movedAt, movement.createdAt)}
                         </td>
 
                         <td className="table-td">
@@ -347,27 +400,29 @@ export default function AssetMovements() {
               </table>
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filtered.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => prev - 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">
-                صفحة {currentPage} من {totalPages}
-              </span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((prev) => prev + 1)}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
