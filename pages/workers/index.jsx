@@ -3,7 +3,12 @@ import Link from "next/link";
 import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
-import { subscribeCachedCollection } from "../../lib/realtimeCache";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -21,6 +26,15 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 const PAGE_SIZE = 10;
+
+const removeWorkerFromCache = (workerId) => {
+  const cached = getCachedCollection("cache:workers");
+
+  setCachedCollection(
+    "cache:workers",
+    cached.filter((item) => item.id !== workerId)
+  );
+};
 
 export default function Workers() {
   const { canManage } = useUserRole();
@@ -93,12 +107,50 @@ export default function Workers() {
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (confirm("هل تريد حذف العامل؟")) {
-      await deleteDoc(doc(db, "workers", id));
+    if (!confirm("هل تريد حذف العامل؟")) return;
 
-      if (paginatedItems.length === 1 && currentPage > 1) {
-        setCurrentPage((prev) => prev - 1);
-      }
+    const target = items.find((item) => item.id === id);
+
+    removeWorkerFromCache(id);
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "workers",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف عامل",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تم حذف العامل محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "workers", id));
+    } catch (error) {
+      console.error(error);
+
+      addOfflineOperation({
+        collectionName: "workers",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف عامل",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
     }
   };
 
@@ -192,7 +244,15 @@ export default function Workers() {
                   {paginatedItems.map((worker) => (
                     <tr key={worker.id} className="border-t">
                       <td className="table-td font-bold">
-                        {worker.name || "-"}
+                        <div className="flex flex-col gap-1">
+                          <span>{worker.name || "-"}</span>
+
+                          {worker.syncStatus === "pending" && (
+                            <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                              قيد المزامنة
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="table-td">{worker.phone || "-"}</td>
