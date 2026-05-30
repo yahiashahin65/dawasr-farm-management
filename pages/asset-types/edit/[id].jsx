@@ -51,17 +51,18 @@ const updateAssetTypeCache = (typeId, payload) => {
 const updateLinkedAssetsCache = (typeId, typeName) => {
   const cached = getCachedCollection("cache:assets");
 
-  const updated = cached.map((asset) =>
-    asset.assetTypeId === typeId
-      ? {
-          ...asset,
-          assetTypeName: typeName,
-          updatedAt: new Date().toISOString(),
-        }
-      : asset
+  setCachedCollection(
+    "cache:assets",
+    cached.map((asset) =>
+      asset.assetTypeId === typeId
+        ? {
+            ...asset,
+            assetTypeName: typeName,
+            updatedAt: new Date().toISOString(),
+          }
+        : asset
+    )
   );
-
-  setCachedCollection("cache:assets", updated);
 };
 
 export default function EditAssetType() {
@@ -136,6 +137,23 @@ export default function EditAssetType() {
     loadType();
   }, [id, router]);
 
+  const queueLinkedAssetsUpdate = (name) => {
+    addOfflineOperation({
+      collectionName: "assets",
+      operation: "bulk-update-asset-type-name",
+      documentId: id,
+      payload: {
+        assetTypeId: id,
+        assetTypeName: name,
+        updatedAt: serverTimestamp(),
+      },
+      meta: {
+        label: "تحديث اسم النوع في الأصول",
+        name,
+      },
+    });
+  };
+
   const submit = async (event) => {
     event.preventDefault();
 
@@ -157,10 +175,10 @@ export default function EditAssetType() {
     };
 
     try {
-      if (!isOnline()) {
-        updateAssetTypeCache(id, payload);
-        updateLinkedAssetsCache(id, name);
+      updateAssetTypeCache(id, payload);
+      updateLinkedAssetsCache(id, name);
 
+      if (!isOnline()) {
         addOfflineOperation({
           collectionName: "assetTypes",
           operation: "update",
@@ -175,20 +193,7 @@ export default function EditAssetType() {
           },
         });
 
-        addOfflineOperation({
-          collectionName: "assets",
-          operation: "bulk-update-asset-type-name",
-          documentId: id,
-          payload: {
-            assetTypeId: id,
-            assetTypeName: name,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تحديث اسم النوع في الأصول",
-            name,
-          },
-        });
+        queueLinkedAssetsUpdate(name);
 
         alert("تم حفظ تعديل نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
         router.push("/asset-types");
@@ -213,14 +218,6 @@ export default function EditAssetType() {
         )
       );
 
-      updateAssetTypeCache(id, {
-        ...payload,
-        isOffline: false,
-        syncStatus: "synced",
-      });
-
-      updateLinkedAssetsCache(id, name);
-
       router.push("/asset-types");
     } catch (error) {
       console.error(error);
@@ -242,20 +239,7 @@ export default function EditAssetType() {
         },
       });
 
-      addOfflineOperation({
-        collectionName: "assets",
-        operation: "bulk-update-asset-type-name",
-        documentId: id,
-        payload: {
-          assetTypeId: id,
-          assetTypeName: name,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تحديث اسم النوع في الأصول",
-          name,
-        },
-      });
+      queueLinkedAssetsUpdate(name);
 
       alert("تعذر الاتصال، تم حفظ تعديل نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
       router.push("/asset-types");
