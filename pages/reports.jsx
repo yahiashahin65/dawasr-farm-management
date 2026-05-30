@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs } from "firebase/firestore";
+
 import { db } from "../lib/firebase";
+import { subscribeCachedCollection } from "../lib/realtimeCache";
 
 import ProtectedRoute from "../components/ProtectedRoute";
 import Layout from "../components/Layout";
@@ -99,43 +100,151 @@ export default function Reports() {
   const [workers, setWorkers] = useState([]);
   const [heaps, setHeaps] = useState([]);
   const [sprinklers, setSprinklers] = useState([]);
+
   const [initialLoading, setInitialLoading] = useState(true);
+  const [loadedMap, setLoadedMap] = useState({});
+  const [realtimeError, setRealtimeError] = useState("");
+
+  const markLoaded = (key) => {
+    setLoadedMap((prev) => ({
+      ...prev,
+      [key]: true,
+    }));
+  };
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribes = [];
 
-      try {
-        const [a, t, f, k, w, h, s] = await Promise.all([
-          getDocs(collection(db, "assets")),
-          getDocs(collection(db, "assetTypes")),
-          getDocs(collection(db, "farms")),
-          getDocs(collection(db, "kubras")),
-          getDocs(collection(db, "workers")),
-          getDocs(collection(db, "heaps")),
-          getDocs(collection(db, "sprinklers")),
-        ]);
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assets",
+        cacheKey: "cache:assets",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setAssets(data);
+          markLoaded("assets");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا"),
+      })
+    );
 
-        setAssets(a.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setTypes(normalizeList(t.docs));
-        setFarms(normalizeList(f.docs));
-        setKubras(normalizeList(k.docs));
-        setWorkers(normalizeList(w.docs));
-        setHeaps(h.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setSprinklers(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } finally {
-        setInitialLoading(false);
-      }
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "assetTypes",
+        cacheKey: "cache:assetTypes",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setTypes(normalizeList(data));
+          markLoaded("types");
+        },
+        onError: () => setRealtimeError("تعذر تحديث أنواع الأصول لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "farms",
+        cacheKey: "cache:farms",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setFarms(normalizeList(data));
+          markLoaded("farms");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "kubras",
+        cacheKey: "cache:kubras",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setKubras(normalizeList(data));
+          markLoaded("kubras");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "workers",
+        cacheKey: "cache:workers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setWorkers(normalizeList(data));
+          markLoaded("workers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات العمال لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "heaps",
+        cacheKey: "cache:heaps",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setHeaps(data);
+          markLoaded("heaps");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا"),
+      })
+    );
+
+    unsubscribes.push(
+      subscribeCachedCollection({
+        db,
+        collectionName: "sprinklers",
+        cacheKey: "cache:sprinklers",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: (data) => {
+          setSprinklers(data);
+          markLoaded("sprinklers");
+        },
+        onError: () => setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا"),
+      })
+    );
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe?.());
     };
-
-    loadInitialData();
   }, []);
+
+  useEffect(() => {
+    const required = [
+      "assets",
+      "types",
+      "farms",
+      "kubras",
+      "workers",
+      "heaps",
+      "sprinklers",
+    ];
+
+    if (required.every((key) => loadedMap[key])) {
+      setInitialLoading(false);
+    }
+  }, [loadedMap]);
 
   const stats = useMemo(() => calculateAssetsStats(assets), [assets]);
 
   const heapStats = useMemo(() => {
     const totalHeaps = heaps.length;
-
     const totalBricks = heaps.reduce(
       (sum, item) => sum + Number(item.bricksCount || 0),
       0
@@ -188,7 +297,7 @@ export default function Reports() {
       byCropType: Object.values(byCropTypeMap).sort(
         (a, b) => b.bricks - a.bricks
       ),
-      latest: [...heaps].slice(0, 5),
+      latest: heaps.slice(0, 5),
     };
   }, [heaps]);
 
@@ -360,6 +469,12 @@ export default function Reports() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               {rowsByStatus.map((row) => (
                 <Link key={row.label} href={row.href} className="page-card p-4">
