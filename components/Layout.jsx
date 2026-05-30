@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
+import { startOfflineSyncListener } from "../lib/syncOfflineQueue";
 import useUserRole from "../hooks/useUserRole";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -109,6 +110,14 @@ function ConnectionStatus() {
 export default function Layout({ children, title = "مزارع السنبلة" }) {
   const router = useRouter();
   const { role } = useUserRole();
+
+  useEffect(() => {
+    const stopSync = startOfflineSyncListener();
+
+    return () => {
+      stopSync?.();
+    };
+  }, []);
 
   const logout = async () => {
     await signOut(auth);
