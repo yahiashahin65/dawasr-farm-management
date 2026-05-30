@@ -3,7 +3,12 @@ import Link from "next/link";
 import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
-import { subscribeCachedCollection } from "../../lib/realtimeCache";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -47,6 +52,15 @@ const getTowersCount = (item) =>
 
 const getHectareNumber = (item) =>
   item.hectareNumber || item.hectare || item.hectar || item.hiktar || "";
+
+const removeFromSprinklersCache = (sprinklerId) => {
+  const cached = getCachedCollection("cache:sprinklers");
+
+  setCachedCollection(
+    "cache:sprinklers",
+    cached.filter((item) => item.id !== sprinklerId)
+  );
+};
 
 export default function Sprinklers() {
   const { canManage } = useUserRole();
@@ -188,12 +202,49 @@ export default function Sprinklers() {
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (confirm("هل تريد حذف الرشاش؟")) {
-      await deleteDoc(doc(db, "sprinklers", id));
+    if (!confirm("هل تريد حذف الرشاش؟")) return;
 
-      if (paginatedItems.length === 1 && currentPage > 1) {
-        setCurrentPage((prev) => prev - 1);
-      }
+    const target = items.find((item) => item.id === id);
+
+    removeFromSprinklersCache(id);
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "sprinklers",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف رشاش",
+          name: target?.name || target?.sprinklerName || "",
+        },
+      });
+
+      alert("تم حذف الرشاش محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "sprinklers", id));
+    } catch (error) {
+      console.error(error);
+
+      addOfflineOperation({
+        collectionName: "sprinklers",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف رشاش",
+          name: target?.name || target?.sprinklerName || "",
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
     }
   };
 
@@ -350,7 +401,15 @@ export default function Sprinklers() {
                       </td>
 
                       <td className="table-td font-bold">
-                        {item.name || item.sprinklerName || "-"}
+                        <div className="flex flex-col gap-1">
+                          <span>{item.name || item.sprinklerName || "-"}</span>
+
+                          {item.syncStatus === "pending" && (
+                            <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                              قيد المزامنة
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="table-td">{item.farmName || "-"}</td>
