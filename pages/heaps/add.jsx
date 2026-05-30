@@ -9,6 +9,11 @@ import {
 
 import { db } from "../../lib/firebase";
 import { fileToFirestoreImage } from "../../lib/imageToFirestore";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
+import {
+  getCachedCollection,
+  setCachedCollection,
+} from "../../lib/realtimeCache";
 import {
   loadMultipleSettingOptions,
   DEFAULT_SYSTEM_SETTINGS,
@@ -18,6 +23,14 @@ import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
 const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
+
+const createLocalId = () =>
+  `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const addToHeapsCache = (heap) => {
+  const cached = getCachedCollection("cache:heaps");
+  setCachedCollection("cache:heaps", [heap, ...cached]);
+};
 
 export default function AddHeapPage() {
   const router = useRouter();
@@ -40,24 +53,31 @@ export default function AddHeapPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [farmsSnap, settings] = await Promise.all([
-        getDocs(collection(db, "farms")),
-        loadMultipleSettingOptions(["cropType"]),
-      ]);
+      try {
+        const [farmsSnap, settings] = await Promise.all([
+          getDocs(collection(db, "farms")),
+          loadMultipleSettingOptions(["cropType"]),
+        ]);
 
-      const cleanFarms = farmsSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((item) => item.name && item.name.trim() !== "");
+        const cleanFarms = farmsSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((item) => item.name && item.name.trim() !== "");
 
-      setFarms(cleanFarms);
+        setFarms(cleanFarms);
 
-      const settingsCropTypes = settings.cropType || [];
+        const settingsCropTypes = settings.cropType || [];
 
-      setCropOptions(
-        settingsCropTypes.length
-          ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
-          : DEFAULT_HEAP_CROP_TYPES
-      );
+        setCropOptions(
+          settingsCropTypes.length
+            ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
+            : DEFAULT_HEAP_CROP_TYPES
+        );
+      } catch {
+        const cachedFarms = getCachedCollection("cache:farms");
+        setFarms(cachedFarms);
+
+        setCropOptions(DEFAULT_HEAP_CROP_TYPES);
+      }
     };
 
     loadData();
@@ -86,6 +106,11 @@ export default function AddHeapPage() {
 
   const uploadImage = async () => {
     if (!image) return "";
+
+    if (!isOnline()) {
+      return "";
+    }
+
     return fileToFirestoreImage(image);
   };
 
@@ -113,9 +138,9 @@ export default function AddHeapPage() {
 
     try {
       const selectedFarm = farms.find((farm) => farm.id === form.farmId);
-      const imageUrl = await uploadImage();
+      const localId = createLocalId();
 
-      await addDoc(collection(db, "heaps"), {
+      const basePayload = {
         pileName: form.pileName.trim(),
 
         farmId: form.farmId,
@@ -127,9 +152,48 @@ export default function AddHeapPage() {
 
         bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
 
-        imageUrl,
         notes: form.notes.trim(),
+      };
 
+      if (!isOnline()) {
+        const localHeap = {
+          id: localId,
+          ...basePayload,
+          imageUrl: "",
+          isOffline: true,
+          syncStatus: "pending",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        addToHeapsCache(localHeap);
+
+        addOfflineOperation({
+          collectionName: "heaps",
+          operation: "create",
+          documentId: localId,
+          payload: {
+            ...basePayload,
+            imageUrl: "",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          meta: {
+            label: "إضافة كوم",
+            name: basePayload.pileName,
+          },
+        });
+
+        alert("تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
+        router.push("/heaps");
+        return;
+      }
+
+      const imageUrl = await uploadImage();
+
+      await addDoc(collection(db, "heaps"), {
+        ...basePayload,
+        imageUrl,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -137,7 +201,48 @@ export default function AddHeapPage() {
       router.push("/heaps");
     } catch (error) {
       console.error(error);
-      alert(error.message || "حدث خطأ أثناء حفظ الكوم");
+
+      const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+      const localId = createLocalId();
+
+      const fallbackPayload = {
+        pileName: form.pileName.trim(),
+        farmId: form.farmId,
+        farmName: selectedFarm?.name || "",
+        cropType: form.cropType || "غير معلوم",
+        sprinklerName: form.sprinklerName.trim(),
+        bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
+        imageUrl: "",
+        notes: form.notes.trim(),
+      };
+
+      addToHeapsCache({
+        id: localId,
+        ...fallbackPayload,
+        isOffline: true,
+        syncStatus: "pending",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      addOfflineOperation({
+        collectionName: "heaps",
+        operation: "create",
+        documentId: localId,
+        payload: {
+          ...fallbackPayload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "إضافة كوم",
+          name: fallbackPayload.pileName,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
+      router.push("/heaps");
+    } finally {
       setLoading(false);
     }
   };
@@ -231,6 +336,13 @@ export default function AddHeapPage() {
                   alt="معاينة صورة الكوم"
                   className="max-h-72 w-full rounded-2xl object-contain"
                 />
+
+                {!isOnline() && (
+                  <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
+                    الصورة لن تُرفع أثناء عدم الاتصال. يمكن رفعها لاحقًا بعد
+                    المزامنة.
+                  </p>
+                )}
 
                 <button
                   type="button"
