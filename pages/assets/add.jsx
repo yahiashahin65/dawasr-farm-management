@@ -10,6 +10,11 @@ import {
 
 import { db } from "../../lib/firebase";
 import { fileToFirestoreImage } from "../../lib/imageToFirestore";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
+import {
+  getCachedCollection,
+  setCachedCollection,
+} from "../../lib/realtimeCache";
 import {
   loadMultipleSettingOptions,
   DEFAULT_SYSTEM_SETTINGS,
@@ -23,6 +28,22 @@ const categories = [
   { value: "spare_part", label: "قطعة غيار" },
   { value: "tool", label: "أداة" },
 ];
+
+const createLocalId = () =>
+  `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const cleanList = (items = []) =>
+  items.filter((item) => item.name && item.name.trim() !== "");
+
+const addAssetToCache = (asset) => {
+  const cached = getCachedCollection("cache:assets");
+  setCachedCollection("cache:assets", [asset, ...cached]);
+};
+
+const addMovementToCache = (movement) => {
+  const cached = getCachedCollection("cache:assetMovements");
+  setCachedCollection("cache:assetMovements", [movement, ...cached]);
+};
 
 export default function AddAsset() {
   const router = useRouter();
@@ -56,32 +77,45 @@ export default function AddAsset() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [workersSnap, farmsSnap, kubrasSnap, typesSnap, settings] =
-        await Promise.all([
-          getDocs(collection(db, "workers")),
-          getDocs(collection(db, "farms")),
-          getDocs(collection(db, "kubras")),
-          getDocs(collection(db, "assetTypes")),
-          loadMultipleSettingOptions(["assetStatus", "externalWorkshop"]),
-        ]);
+      try {
+        const [workersSnap, farmsSnap, kubrasSnap, typesSnap, settings] =
+          await Promise.all([
+            getDocs(collection(db, "workers")),
+            getDocs(collection(db, "farms")),
+            getDocs(collection(db, "kubras")),
+            getDocs(collection(db, "assetTypes")),
+            loadMultipleSettingOptions(["assetStatus", "externalWorkshop"]),
+          ]);
 
-      const clean = (snap) =>
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "");
+        const clean = (snap) =>
+          snap.docs
+            .map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }))
+            .filter((item) => item.name && item.name.trim() !== "");
 
-      setWorkers(clean(workersSnap));
-      setFarms(clean(farmsSnap));
-      setKubras(clean(kubrasSnap));
-      setTypes(clean(typesSnap));
+        setWorkers(clean(workersSnap));
+        setFarms(clean(farmsSnap));
+        setKubras(clean(kubrasSnap));
+        setTypes(clean(typesSnap));
 
-      setStatusOptions(
-        settings.assetStatus?.length
-          ? settings.assetStatus
-          : DEFAULT_SYSTEM_SETTINGS.assetStatus
-      );
+        setStatusOptions(
+          settings.assetStatus?.length
+            ? settings.assetStatus
+            : DEFAULT_SYSTEM_SETTINGS.assetStatus
+        );
 
-      setWorkshopOptions(settings.externalWorkshop || []);
+        setWorkshopOptions(settings.externalWorkshop || []);
+      } catch {
+        setWorkers(cleanList(getCachedCollection("cache:workers")));
+        setFarms(cleanList(getCachedCollection("cache:farms")));
+        setKubras(cleanList(getCachedCollection("cache:kubras")));
+        setTypes(cleanList(getCachedCollection("cache:assetTypes")));
+
+        setStatusOptions(DEFAULT_SYSTEM_SETTINGS.assetStatus);
+        setWorkshopOptions([]);
+      }
     };
 
     loadData();
@@ -142,14 +176,20 @@ export default function AddAsset() {
       return;
     }
 
+    if (!isOnline() && image) {
+      alert("لا يمكن رفع صورة أثناء عدم الاتصال");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const place = isExternalWorkshop
         ? null
-        : places.find((f) => f.id === form.placeId);
+        : places.find((item) => item.id === form.placeId);
 
       const placeId = isExternalWorkshop ? "" : form.placeId;
+
       const placeType = isExternalWorkshop
         ? "external_workshop"
         : form.placeType;
@@ -158,17 +198,18 @@ export default function AddAsset() {
         ? form.externalWorkshopName.trim()
         : place?.name || "";
 
-      const type = types.find((t) => t.id === form.assetTypeId);
-      const selectedWorkers = workers.filter((w) =>
-        form.workerIds.includes(w.id)
+      const type = types.find((item) => item.id === form.assetTypeId);
+
+      const selectedWorkers = workers.filter((worker) =>
+        form.workerIds.includes(worker.id)
       );
 
-      const imageUrl = await uploadImage();
+      const assetId = createLocalId();
+      const movementId = createLocalId();
 
-      const assetRef = doc(collection(db, "assets"));
-      const movementRef = doc(collection(db, "assetMovements"));
+      const imageUrl = isOnline() ? await uploadImage() : "";
 
-      const payload = {
+      const assetPayload = {
         name: form.name.trim(),
         code: form.code.trim(),
 
@@ -199,25 +240,21 @@ export default function AddAsset() {
           placeType === "external_workshop" ? placeName : "",
 
         workerIds: form.workerIds,
-        workers: selectedWorkers.map((w) => ({
-          id: w.id,
-          name: w.name,
-          phone: w.phone || "",
+
+        workers: selectedWorkers.map((worker) => ({
+          id: worker.id,
+          name: worker.name,
+          phone: worker.phone || "",
         })),
-        workerNames: selectedWorkers.map((w) => w.name).join("، "),
+
+        workerNames: selectedWorkers.map((worker) => worker.name).join("، "),
 
         imageUrl,
         notes: form.notes.trim(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       };
 
-      const batch = writeBatch(db);
-
-      batch.set(assetRef, payload);
-
-      batch.set(movementRef, {
-        assetId: assetRef.id,
+      const movementPayload = {
+        assetId,
         assetName: form.name.trim(),
 
         movementType: "created",
@@ -229,12 +266,81 @@ export default function AddAsset() {
         toPlaceId: placeId,
         toPlaceName: placeName,
 
-        status: payload.status,
+        status: assetPayload.status,
         category: form.category,
 
         reason: "تسجيل أول مكان للأصل",
         notes: form.notes.trim(),
+      };
 
+      if (!isOnline()) {
+        addAssetToCache({
+          id: assetId,
+          ...assetPayload,
+          isOffline: true,
+          syncStatus: "pending",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        addMovementToCache({
+          id: movementId,
+          ...movementPayload,
+          isOffline: true,
+          syncStatus: "pending",
+          movedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        });
+
+        addOfflineOperation({
+          collectionName: "assets",
+          operation: "create",
+          documentId: assetId,
+          payload: {
+            ...assetPayload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          meta: {
+            label: "إضافة أصل",
+            name: assetPayload.name,
+          },
+        });
+
+        addOfflineOperation({
+          collectionName: "assetMovements",
+          operation: "create",
+          documentId: movementId,
+          payload: {
+            ...movementPayload,
+            movedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+          },
+          meta: {
+            label: "تسجيل أول حركة للأصل",
+            name: assetPayload.name,
+          },
+        });
+
+        alert("تم حفظ الأصل محليًا وسيتم رفعه عند عودة الاتصال");
+        router.push("/assets");
+        return;
+      }
+
+      const assetRef = doc(collection(db, "assets"));
+      const movementRef = doc(collection(db, "assetMovements"));
+
+      const batch = writeBatch(db);
+
+      batch.set(assetRef, {
+        ...assetPayload,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      batch.set(movementRef, {
+        ...movementPayload,
+        assetId: assetRef.id,
         movedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
@@ -244,7 +350,128 @@ export default function AddAsset() {
       router.push("/assets");
     } catch (error) {
       console.error(error);
-      alert(error.message || "حدث خطأ أثناء الحفظ");
+
+      const place = isExternalWorkshop
+        ? null
+        : places.find((item) => item.id === form.placeId);
+
+      const placeId = isExternalWorkshop ? "" : form.placeId;
+
+      const placeType = isExternalWorkshop
+        ? "external_workshop"
+        : form.placeType;
+
+      const placeName = isExternalWorkshop
+        ? form.externalWorkshopName.trim()
+        : place?.name || "";
+
+      const type = types.find((item) => item.id === form.assetTypeId);
+
+      const selectedWorkers = workers.filter((worker) =>
+        form.workerIds.includes(worker.id)
+      );
+
+      const assetId = createLocalId();
+      const movementId = createLocalId();
+
+      const fallbackAssetPayload = {
+        name: form.name.trim(),
+        code: form.code.trim(),
+        category: form.category,
+        assetTypeId: form.assetTypeId,
+        assetTypeName: type?.name || "",
+        status: isExternalWorkshop ? "في الورشة" : form.status,
+        placeType,
+        placeId,
+        placeName,
+        currentPlace: {
+          type: placeType,
+          id: placeId,
+          name: placeName,
+        },
+        farmId: placeType === "farm" ? form.placeId : "",
+        farmName: placeType === "farm" ? placeName : "",
+        kubraId: placeType === "kubra" ? form.placeId : "",
+        kubraName: placeType === "kubra" ? placeName : "",
+        externalWorkshopName:
+          placeType === "external_workshop" ? placeName : "",
+        workerIds: form.workerIds,
+        workers: selectedWorkers.map((worker) => ({
+          id: worker.id,
+          name: worker.name,
+          phone: worker.phone || "",
+        })),
+        workerNames: selectedWorkers.map((worker) => worker.name).join("، "),
+        imageUrl: "",
+        notes: form.notes.trim(),
+      };
+
+      const fallbackMovementPayload = {
+        assetId,
+        assetName: form.name.trim(),
+        movementType: "created",
+        fromPlaceType: "",
+        fromPlaceName: "",
+        toPlaceType: placeType,
+        toPlaceId: placeId,
+        toPlaceName: placeName,
+        status: fallbackAssetPayload.status,
+        category: form.category,
+        reason: "تسجيل أول مكان للأصل",
+        notes: form.notes.trim(),
+      };
+
+      addAssetToCache({
+        id: assetId,
+        ...fallbackAssetPayload,
+        isOffline: true,
+        syncStatus: "pending",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      addMovementToCache({
+        id: movementId,
+        ...fallbackMovementPayload,
+        isOffline: true,
+        syncStatus: "pending",
+        movedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+
+      addOfflineOperation({
+        collectionName: "assets",
+        operation: "create",
+        documentId: assetId,
+        payload: {
+          ...fallbackAssetPayload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "إضافة أصل",
+          name: fallbackAssetPayload.name,
+        },
+      });
+
+      addOfflineOperation({
+        collectionName: "assetMovements",
+        operation: "create",
+        documentId: movementId,
+        payload: {
+          ...fallbackMovementPayload,
+          movedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        },
+        meta: {
+          label: "تسجيل أول حركة للأصل",
+          name: fallbackAssetPayload.name,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ الأصل محليًا وسيتم رفعه عند عودة الاتصال");
+      router.push("/assets");
+    } finally {
       setLoading(false);
     }
   };
@@ -274,9 +501,10 @@ export default function AddAsset() {
               }
             >
               <option value="">اختر النوع</option>
-              {types.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
                 </option>
               ))}
             </select>
@@ -337,6 +565,7 @@ export default function AddAsset() {
                 }
               >
                 <option value="">اختر الورشة الخارجية</option>
+
                 {workshopOptions.map((workshop) => (
                   <option key={workshop} value={workshop}>
                     {workshop}
@@ -352,9 +581,10 @@ export default function AddAsset() {
                 <option value="">
                   اختر {form.placeType === "farm" ? "المزرعة" : "الكِبرة"}
                 </option>
-                {places.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
+
+                {places.map((place) => (
+                  <option key={place.id} value={place.id}>
+                    {place.name}
                   </option>
                 ))}
               </select>
@@ -384,9 +614,9 @@ export default function AddAsset() {
                 });
               }}
             >
-              {statusOptions.map((x) => (
-                <option key={x} value={x}>
-                  {x}
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
                 </option>
               ))}
             </select>
@@ -404,21 +634,22 @@ export default function AddAsset() {
             </label>
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {workers.map((w) => (
+              {workers.map((worker) => (
                 <label
-                  key={w.id}
+                  key={worker.id}
                   className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 text-sm font-bold ${
-                    form.workerIds.includes(w.id)
+                    form.workerIds.includes(worker.id)
                       ? "border-green-600 bg-green-50 text-green-800"
                       : "border-slate-200 bg-white text-slate-700"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={form.workerIds.includes(w.id)}
-                    onChange={() => toggleWorker(w.id)}
+                    checked={form.workerIds.includes(worker.id)}
+                    onChange={() => toggleWorker(worker.id)}
                   />
-                  {w.name}
+
+                  {worker.name}
                 </label>
               ))}
             </div>
@@ -428,6 +659,7 @@ export default function AddAsset() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
                 تصوير بالكاميرا
+
                 <input
                   type="file"
                   accept="image/*"
@@ -439,6 +671,7 @@ export default function AddAsset() {
 
               <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
                 رفع من الجهاز
+
                 <input
                   type="file"
                   accept="image/*"
@@ -455,6 +688,12 @@ export default function AddAsset() {
                   alt="معاينة الصورة"
                   className="max-h-72 w-full rounded-2xl object-contain"
                 />
+
+                {!isOnline() && (
+                  <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
+                    لا يمكن رفع صورة أثناء عدم الاتصال.
+                  </p>
+                )}
 
                 <button
                   type="button"
