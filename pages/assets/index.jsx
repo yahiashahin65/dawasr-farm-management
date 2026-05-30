@@ -5,7 +5,12 @@ import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
 import { calculateAssetsStats } from "../../lib/assetsStats";
-import { subscribeCachedCollection } from "../../lib/realtimeCache";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -35,6 +40,15 @@ import {
 } from "../../lib/inventory";
 
 const PAGE_SIZE = 10;
+
+const removeAssetFromCache = (assetId) => {
+  const cached = getCachedCollection("cache:assets");
+
+  setCachedCollection(
+    "cache:assets",
+    cached.filter((item) => item.id !== assetId)
+  );
+};
 
 export default function Assets() {
   const router = useRouter();
@@ -141,9 +155,7 @@ export default function Assets() {
     };
   }, []);
 
-  const stats = useMemo(() => {
-    return calculateAssetsStats(allItems);
-  }, [allItems]);
+  const stats = useMemo(() => calculateAssetsStats(allItems), [allItems]);
 
   useEffect(() => {
     const q = router.query;
@@ -183,18 +195,6 @@ export default function Assets() {
     setSearch("");
     setCurrentPage(1);
     router.push("/assets");
-  };
-
-  const remove = async (id) => {
-    if (!canManage) return;
-
-    if (confirm("هل تريد حذف الأصل؟")) {
-      await deleteDoc(doc(db, "assets", id));
-
-      if (paginatedItems.length === 1 && currentPage > 1) {
-        setCurrentPage((prev) => prev - 1);
-      }
-    }
   };
 
   const filtered = useMemo(
@@ -245,6 +245,56 @@ export default function Assets() {
     );
   }, [filtered, currentPage]);
 
+  const remove = async (id) => {
+    if (!canManage) return;
+
+    if (!confirm("هل تريد حذف الأصل؟")) return;
+
+    const target = allItems.find((item) => item.id === id);
+
+    removeAssetFromCache(id);
+    setAllItems((prev) => prev.filter((item) => item.id !== id));
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "assets",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف أصل",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تم حذف الأصل محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "assets", id));
+    } catch (error) {
+      console.error(error);
+
+      addOfflineOperation({
+        collectionName: "assets",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف أصل",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
+    }
+  };
+
   const quick = [
     { label: "الكل", count: stats.total, key: "", value: "" },
     { label: "صالح", count: stats.good, key: "status", value: "صالح" },
@@ -263,6 +313,12 @@ export default function Assets() {
       value: "spare_part",
     },
     { label: "أدوات", count: stats.tools, key: "category", value: "tool" },
+    {
+      label: "مواد",
+      count: stats.materials,
+      key: "category",
+      value: "material",
+    },
     {
       label: "داخل المزارع",
       count: stats.inFarms,
@@ -291,6 +347,7 @@ export default function Assets() {
   const categoryLabel = (category) => {
     if (category === "spare_part") return "قطعة غيار";
     if (category === "tool") return "أداة";
+    if (category === "material") return "مواد";
     return "معدة";
   };
 
@@ -382,6 +439,7 @@ export default function Assets() {
                 <option value="asset">معدات</option>
                 <option value="spare_part">قطع غيار</option>
                 <option value="tool">أدوات</option>
+                <option value="material">مواد</option>
               </select>
 
               <select
@@ -485,6 +543,13 @@ export default function Assets() {
                         <td className="table-td">
                           <Link href={`/assets/${asset.id}`}>
                             <b>{asset.name}</b>
+
+                            {asset.syncStatus === "pending" && (
+                              <span className="mr-2 rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                قيد المزامنة
+                              </span>
+                            )}
+
                             <p className="text-xs text-slate-400">
                               {asset.code || ""}
                             </p>
@@ -613,6 +678,12 @@ export default function Assets() {
                       >
                         {asset.name}
                       </Link>
+
+                      {asset.syncStatus === "pending" && (
+                        <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                          قيد المزامنة
+                        </span>
+                      )}
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="badge bg-purple-50 text-purple-700">
