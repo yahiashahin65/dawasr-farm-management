@@ -4,6 +4,8 @@ import Link from "next/link";
 import { doc, getDoc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { getCachedCollection } from "../../lib/realtimeCache";
+import { isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -37,6 +39,11 @@ const getHectareNumber = (item) =>
   item?.hiktar ??
   "";
 
+const getSprinklerFromCache = (sprinklerId) => {
+  const cached = getCachedCollection("cache:sprinklers");
+  return cached.find((item) => item.id === sprinklerId) || null;
+};
+
 function InfoCard({ label, value, href = null }) {
   return (
     <div className="rounded-2xl border border-slate-100 bg-white p-4">
@@ -64,6 +71,7 @@ export default function SprinklerDetails() {
 
   const [item, setItem] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -72,17 +80,39 @@ export default function SprinklerDetails() {
       setInitialLoading(true);
 
       try {
-        const snap = await getDoc(doc(db, "sprinklers", id));
+        const cachedItem = getSprinklerFromCache(id);
 
-        if (!snap.exists()) {
-          setItem(null);
-          return;
+        if (cachedItem) {
+          setItem(cachedItem);
+
+          if (!isOnline()) {
+            setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
+            setInitialLoading(false);
+            return;
+          }
         }
 
-        setItem({
-          id: snap.id,
-          ...snap.data(),
-        });
+        const snap = await getDoc(doc(db, "sprinklers", id));
+
+        if (snap.exists()) {
+          setItem({
+            id: snap.id,
+            ...snap.data(),
+          });
+        } else if (!cachedItem) {
+          setItem(null);
+        }
+      } catch (error) {
+        console.error(error);
+
+        const cachedItem = getSprinklerFromCache(id);
+
+        if (cachedItem) {
+          setItem(cachedItem);
+          setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
+        } else {
+          setItem(null);
+        }
       } finally {
         setInitialLoading(false);
       }
@@ -122,6 +152,18 @@ export default function SprinklerDetails() {
 
             <div className="lg:col-span-2">
               <div className="page-card p-5">
+                {offlineNotice && (
+                  <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                    {offlineNotice}
+                  </div>
+                )}
+
+                {item.syncStatus === "pending" && (
+                  <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+                    هذا الرشاش قيد المزامنة وسيتم رفع التغييرات عند عودة الاتصال
+                  </div>
+                )}
+
                 <div className="mb-6 flex items-start justify-between gap-3">
                   <div>
                     <h1 className="text-3xl font-black text-slate-900">
@@ -149,10 +191,7 @@ export default function SprinklerDetails() {
                     value={item.machineName || item.machine}
                   />
 
-                  <InfoCard
-                    label="الجير"
-                    value={item.gearName || item.gear}
-                  />
+                  <InfoCard label="الجير" value={item.gearName || item.gear} />
 
                   <InfoCard label="نوع المحصول" value={item.cropType} />
 
@@ -166,10 +205,7 @@ export default function SprinklerDetails() {
                     value={getTowersCount(item)}
                   />
 
-                  <InfoCard
-                    label="الهكتار"
-                    value={getHectareNumber(item)}
-                  />
+                  <InfoCard label="الهكتار" value={getHectareNumber(item)} />
 
                   <InfoCard
                     label="العامل"
