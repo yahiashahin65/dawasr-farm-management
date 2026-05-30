@@ -11,6 +11,8 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { getCachedCollection } from "../../lib/realtimeCache";
+import { isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -23,19 +25,30 @@ const normalizeMovement = (value) => {
     return "ثلاث أرباع دائري";
   }
 
-  if (text.includes("نصين") || text.includes("نصفين")) {
-    return "نصين";
-  }
-
-  if (text.includes("نصف") || text.includes("نص")) {
-    return "نصف دائري";
-  }
-
-  if (text.includes("دائري") || text.includes("دايري")) {
-    return "دائري";
-  }
+  if (text.includes("نصين") || text.includes("نصفين")) return "نصين";
+  if (text.includes("نصف") || text.includes("نص")) return "نصف دائري";
+  if (text.includes("دائري") || text.includes("دايري")) return "دائري";
 
   return text || "-";
+};
+
+const getWorkerFromCache = (workerId) => {
+  const cached = getCachedCollection("cache:workers");
+  return cached.find((item) => item.id === workerId) || null;
+};
+
+const getWorkerAssetsFromCache = (workerId) => {
+  const cached = getCachedCollection("cache:assets");
+
+  return cached.filter((asset) =>
+    Array.isArray(asset.workerIds) ? asset.workerIds.includes(workerId) : false
+  );
+};
+
+const getWorkerSprinklersFromCache = (workerId) => {
+  const cached = getCachedCollection("cache:sprinklers");
+
+  return cached.filter((sprinkler) => sprinkler.workerId === workerId);
 };
 
 export default function WorkerDetails() {
@@ -46,6 +59,7 @@ export default function WorkerDetails() {
   const [assets, setAssets] = useState([]);
   const [sprinklers, setSprinklers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -54,6 +68,22 @@ export default function WorkerDetails() {
       setInitialLoading(true);
 
       try {
+        const cachedWorker = getWorkerFromCache(id);
+        const cachedAssets = getWorkerAssetsFromCache(id);
+        const cachedSprinklers = getWorkerSprinklersFromCache(id);
+
+        if (cachedWorker) {
+          setWorker(cachedWorker);
+          setAssets(cachedAssets);
+          setSprinklers(cachedSprinklers);
+
+          if (!isOnline()) {
+            setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
+            setInitialLoading(false);
+            return;
+          }
+        }
+
         const [workerSnap, assetsSnap, sprinklersSnap] = await Promise.all([
           getDoc(doc(db, "workers", id)),
           getDocs(
@@ -62,12 +92,7 @@ export default function WorkerDetails() {
               where("workerIds", "array-contains", id)
             )
           ),
-          getDocs(
-            query(
-              collection(db, "sprinklers"),
-              where("workerId", "==", id)
-            )
-          ),
+          getDocs(query(collection(db, "sprinklers"), where("workerId", "==", id))),
         ]);
 
         if (workerSnap.exists()) {
@@ -75,7 +100,7 @@ export default function WorkerDetails() {
             id: workerSnap.id,
             ...workerSnap.data(),
           });
-        } else {
+        } else if (!cachedWorker) {
           setWorker(null);
         }
 
@@ -94,7 +119,18 @@ export default function WorkerDetails() {
         );
       } catch (error) {
         console.error(error);
-        alert("حدث خطأ أثناء تحميل بيانات العامل");
+
+        const cachedWorker = getWorkerFromCache(id);
+
+        if (cachedWorker) {
+          setWorker(cachedWorker);
+          setAssets(getWorkerAssetsFromCache(id));
+          setSprinklers(getWorkerSprinklersFromCache(id));
+          setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
+        } else {
+          alert("حدث خطأ أثناء تحميل بيانات العامل");
+          setWorker(null);
+        }
       } finally {
         setInitialLoading(false);
       }
@@ -119,6 +155,18 @@ export default function WorkerDetails() {
         ) : (
           <div className="grid gap-5 lg:grid-cols-3">
             <div className="page-card p-5">
+              {offlineNotice && (
+                <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                  {offlineNotice}
+                </div>
+              )}
+
+              {worker.syncStatus === "pending" && (
+                <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+                  هذا العامل قيد المزامنة وسيتم رفع التغييرات عند عودة الاتصال
+                </div>
+              )}
+
               <h3 className="text-lg font-black text-slate-900">
                 {worker.name || "-"}
               </h3>
@@ -149,6 +197,16 @@ export default function WorkerDetails() {
                     رشاش مسجل على العامل
                   </span>
                 </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Link href={`/workers/edit/${worker.id}`} className="btn-primary">
+                  تعديل العامل
+                </Link>
+
+                <Link href="/workers" className="btn-secondary">
+                  رجوع للعمال
+                </Link>
               </div>
             </div>
 
