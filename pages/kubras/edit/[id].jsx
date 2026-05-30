@@ -39,6 +39,37 @@ const updateKubraCache = (kubraId, payload) => {
   setCachedCollection("cache:kubras", next);
 };
 
+const updateRelatedKubraCache = (kubraId, kubraName) => {
+  const cachedAssets = getCachedCollection("cache:assets");
+
+  setCachedCollection(
+    "cache:assets",
+    cachedAssets.map((asset) => {
+      const isRelated =
+        asset.kubraId === kubraId ||
+        (asset.placeType === "kubra" && asset.placeId === kubraId);
+
+      if (!isRelated) return asset;
+
+      return {
+        ...asset,
+        kubraName,
+        placeName: asset.placeType === "kubra" ? kubraName : asset.placeName,
+        currentPlace:
+          asset.placeType === "kubra"
+            ? {
+                ...(asset.currentPlace || {}),
+                id: kubraId,
+                type: "kubra",
+                name: kubraName,
+              }
+            : asset.currentPlace,
+        updatedAt: new Date().toISOString(),
+      };
+    })
+  );
+};
+
 export default function EditKubra() {
   const router = useRouter();
   const { id } = router.query;
@@ -111,6 +142,22 @@ export default function EditKubra() {
     loadKubra();
   }, [id, router]);
 
+  const queueRelatedKubraUpdate = (payload) => {
+    addOfflineOperation({
+      collectionName: "kubras",
+      operation: "update-related-kubra-name",
+      documentId: id,
+      payload: {
+        kubraId: id,
+        kubraName: payload.name,
+      },
+      meta: {
+        label: "تحديث اسم الكِبرة في الأصول",
+        name: payload.name,
+      },
+    });
+  };
+
   const submit = async (e) => {
     e.preventDefault();
 
@@ -129,9 +176,10 @@ export default function EditKubra() {
     };
 
     try {
-      if (!isOnline()) {
-        updateKubraCache(id, payload);
+      updateKubraCache(id, payload);
+      updateRelatedKubraCache(id, payload.name);
 
+      if (!isOnline()) {
         addOfflineOperation({
           collectionName: "kubras",
           operation: "update",
@@ -146,6 +194,8 @@ export default function EditKubra() {
           },
         });
 
+        queueRelatedKubraUpdate(payload);
+
         alert("تم حفظ تعديل الكِبرة محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/kubras/${id}`);
         return;
@@ -156,17 +206,14 @@ export default function EditKubra() {
         updatedAt: serverTimestamp(),
       });
 
-      updateKubraCache(id, {
-        ...payload,
-        isOffline: false,
-        syncStatus: "synced",
-      });
+      queueRelatedKubraUpdate(payload);
 
       router.push(`/kubras/${id}`);
     } catch (error) {
       console.error(error);
 
       updateKubraCache(id, payload);
+      updateRelatedKubraCache(id, payload.name);
 
       addOfflineOperation({
         collectionName: "kubras",
@@ -181,6 +228,8 @@ export default function EditKubra() {
           name: payload.name,
         },
       });
+
+      queueRelatedKubraUpdate(payload);
 
       alert("تعذر الاتصال، تم حفظ تعديل الكِبرة محليًا وسيتم رفعه عند عودة الاتصال");
       router.push(`/kubras/${id}`);
