@@ -65,6 +65,9 @@ const mergeCurrentValue = (options, value) => {
   return options.includes(value) ? options : [value, ...options];
 };
 
+const cleanList = (items = []) =>
+  items.filter((item) => item.name && item.name.trim() !== "");
+
 const getSprinklerFromCache = (sprinklerId) => {
   const cached = getCachedCollection("cache:sprinklers");
   return cached.find((item) => item.id === sprinklerId) || null;
@@ -72,7 +75,6 @@ const getSprinklerFromCache = (sprinklerId) => {
 
 const updateSprinklerCache = (sprinklerId, payload) => {
   const cached = getCachedCollection("cache:sprinklers");
-
   const exists = cached.some((item) => item.id === sprinklerId);
 
   const updatedItem = {
@@ -99,6 +101,7 @@ export default function EditSprinkler() {
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [offlineNotice, setOfflineNotice] = useState("");
 
   const [farms, setFarms] = useState([]);
   const [workers, setWorkers] = useState([]);
@@ -124,6 +127,22 @@ export default function EditSprinkler() {
     imageUrl: "",
   });
 
+  const fillForm = (data) => {
+    setForm({
+      name: data.name || data.sprinklerName || "",
+      farmName: data.farmName || "",
+      machineName: data.machineName || data.machine || "",
+      gearName: normalizeGear(data.gearName || data.gear || ""),
+      cropType: data.cropType || "",
+      movementType: data.movementType || "",
+      towersCount: getTowersValue(data),
+      hectareNumber: getHectareValue(data),
+      workerId: data.workerId || "",
+      workerName: data.workerName || "",
+      imageUrl: data.imageUrl || "",
+    });
+  };
+
   useEffect(() => {
     if (!id) return;
 
@@ -134,31 +153,20 @@ export default function EditSprinkler() {
         const cachedSprinkler = getSprinklerFromCache(id);
 
         if (cachedSprinkler) {
-          setForm({
-            name: cachedSprinkler.name || cachedSprinkler.sprinklerName || "",
-            farmName: cachedSprinkler.farmName || "",
-            machineName: cachedSprinkler.machineName || cachedSprinkler.machine || "",
-            gearName: normalizeGear(cachedSprinkler.gearName || cachedSprinkler.gear || ""),
-            cropType: cachedSprinkler.cropType || "",
-            movementType: cachedSprinkler.movementType || "",
-            towersCount: getTowersValue(cachedSprinkler),
-            hectareNumber: getHectareValue(cachedSprinkler),
-            workerId: cachedSprinkler.workerId || "",
-            workerName: cachedSprinkler.workerName || "",
-            imageUrl: cachedSprinkler.imageUrl || "",
-          });
+          fillForm(cachedSprinkler);
+
+          setFarms(cleanList(getCachedCollection("cache:farms")));
+          setWorkers(cleanList(getCachedCollection("cache:workers")));
+          setItems(getCachedCollection("cache:sprinklers"));
 
           if (!isOnline()) {
-            setFarms(getCachedCollection("cache:farms"));
-            setWorkers(getCachedCollection("cache:workers"));
-            setItems(getCachedCollection("cache:sprinklers"));
-
             setSettingOptions({
               sprinklerMovement: DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
               cropType: DEFAULT_SYSTEM_SETTINGS.cropType,
               gearType: DEFAULT_SYSTEM_SETTINGS.gearType,
             });
 
+            setOfflineNotice("يتم تعديل البيانات من الكاش لأن الجهاز غير متصل");
             setInitialLoading(false);
             return;
           }
@@ -189,25 +197,21 @@ export default function EditSprinkler() {
         }
 
         if (sprinklerSnap.exists()) {
-          const data = sprinklerSnap.data();
-
-          setForm({
-            name: data.name || data.sprinklerName || "",
-            farmName: data.farmName || "",
-            machineName: data.machineName || data.machine || "",
-            gearName: normalizeGear(data.gearName || data.gear || ""),
-            cropType: data.cropType || "",
-            movementType: data.movementType || "",
-            towersCount: getTowersValue(data),
-            hectareNumber: getHectareValue(data),
-            workerId: data.workerId || "",
-            workerName: data.workerName || "",
-            imageUrl: data.imageUrl || "",
-          });
+          fillForm(sprinklerSnap.data());
         }
 
-        setFarms(farmsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setWorkers(workersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setFarms(
+          farmsSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((item) => item.name && item.name.trim() !== "")
+        );
+
+        setWorkers(
+          workersSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((item) => item.name && item.name.trim() !== "")
+        );
+
         setItems(
           sprinklersSnap.docs.map((d) => ({
             id: d.id,
@@ -228,22 +232,10 @@ export default function EditSprinkler() {
         const cachedSprinkler = getSprinklerFromCache(id);
 
         if (cachedSprinkler) {
-          setForm({
-            name: cachedSprinkler.name || cachedSprinkler.sprinklerName || "",
-            farmName: cachedSprinkler.farmName || "",
-            machineName: cachedSprinkler.machineName || cachedSprinkler.machine || "",
-            gearName: normalizeGear(cachedSprinkler.gearName || cachedSprinkler.gear || ""),
-            cropType: cachedSprinkler.cropType || "",
-            movementType: cachedSprinkler.movementType || "",
-            towersCount: getTowersValue(cachedSprinkler),
-            hectareNumber: getHectareValue(cachedSprinkler),
-            workerId: cachedSprinkler.workerId || "",
-            workerName: cachedSprinkler.workerName || "",
-            imageUrl: cachedSprinkler.imageUrl || "",
-          });
+          fillForm(cachedSprinkler);
 
-          setFarms(getCachedCollection("cache:farms"));
-          setWorkers(getCachedCollection("cache:workers"));
+          setFarms(cleanList(getCachedCollection("cache:farms")));
+          setWorkers(cleanList(getCachedCollection("cache:workers")));
           setItems(getCachedCollection("cache:sprinklers"));
 
           setSettingOptions({
@@ -251,6 +243,8 @@ export default function EditSprinkler() {
             cropType: DEFAULT_SYSTEM_SETTINGS.cropType,
             gearType: DEFAULT_SYSTEM_SETTINGS.gearType,
           });
+
+          setOfflineNotice("تعذر الاتصال، يتم تعديل آخر نسخة محفوظة من الكاش");
         } else {
           alert("حدث خطأ أثناء تحميل بيانات الرشاش");
           router.push("/sprinklers");
@@ -371,27 +365,27 @@ export default function EditSprinkler() {
 
     setSaving(true);
 
-    try {
-      const cleanedGearName = normalizeGear(form.gearName);
+    const cleanedGearName = normalizeGear(form.gearName);
 
-      const payload = {
-        name: form.name.trim(),
-        sprinklerName: form.name.trim(),
-        farmName: form.farmName,
-        machineName: form.machineName,
-        gearName: cleanedGearName,
-        cropType: form.cropType,
-        movementType: form.movementType,
-        towersCount: Number(form.towersCount || 0),
-        hectareNumber: form.hectareNumber || "",
-        workerId: form.workerId,
-        workerName: form.workerName,
-        imageUrl: form.imageUrl || "",
-      };
+    const payload = {
+      name: form.name.trim(),
+      sprinklerName: form.name.trim(),
+      farmName: form.farmName,
+      machineName: form.machineName,
+      gearName: cleanedGearName,
+      cropType: form.cropType,
+      movementType: form.movementType,
+      towersCount: Number(form.towersCount || 0),
+      hectareNumber: form.hectareNumber || "",
+      workerId: form.workerId,
+      workerName: form.workerName,
+      imageUrl: form.imageUrl || "",
+    };
+
+    try {
+      updateSprinklerCache(id, payload);
 
       if (!isOnline()) {
-        updateSprinklerCache(id, payload);
-
         addOfflineOperation({
           collectionName: "sprinklers",
           operation: "update",
@@ -416,46 +410,23 @@ export default function EditSprinkler() {
         updatedAt: serverTimestamp(),
       });
 
-      updateSprinklerCache(id, {
-        ...payload,
-        isOffline: false,
-        syncStatus: "synced",
-      });
-
       router.push(`/sprinklers/${id}`);
     } catch (error) {
       console.error(error);
 
-      const cleanedGearName = normalizeGear(form.gearName);
-
-      const fallbackPayload = {
-        name: form.name.trim(),
-        sprinklerName: form.name.trim(),
-        farmName: form.farmName,
-        machineName: form.machineName,
-        gearName: cleanedGearName,
-        cropType: form.cropType,
-        movementType: form.movementType,
-        towersCount: Number(form.towersCount || 0),
-        hectareNumber: form.hectareNumber || "",
-        workerId: form.workerId,
-        workerName: form.workerName,
-        imageUrl: form.imageUrl || "",
-      };
-
-      updateSprinklerCache(id, fallbackPayload);
+      updateSprinklerCache(id, payload);
 
       addOfflineOperation({
         collectionName: "sprinklers",
         operation: "update",
         documentId: id,
         payload: {
-          ...fallbackPayload,
+          ...payload,
           updatedAt: serverTimestamp(),
         },
         meta: {
           label: "تعديل رشاش",
-          name: fallbackPayload.name,
+          name: payload.name,
         },
       });
 
@@ -477,6 +448,12 @@ export default function EditSprinkler() {
           />
         ) : (
           <form onSubmit={submit} className="grid gap-5 lg:grid-cols-3">
+            {offlineNotice && (
+              <div className="page-card border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700 lg:col-span-3">
+                {offlineNotice}
+              </div>
+            )}
+
             <div className="page-card p-5 lg:col-span-2">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -498,6 +475,7 @@ export default function EditSprinkler() {
                     required
                   >
                     <option value="">اختر المزرعة</option>
+
                     {farms.map((farm) => (
                       <option key={farm.id} value={farm.name}>
                         {farm.name}
@@ -530,6 +508,7 @@ export default function EditSprinkler() {
                     onChange={(e) => updateField("gearName", e.target.value)}
                   >
                     <option value="">اختر الجير</option>
+
                     {gearOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
@@ -546,6 +525,7 @@ export default function EditSprinkler() {
                     onChange={(e) => updateField("cropType", e.target.value)}
                   >
                     <option value="">اختر نوع المحصول</option>
+
                     {cropOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
@@ -562,6 +542,7 @@ export default function EditSprinkler() {
                     onChange={(e) => updateField("movementType", e.target.value)}
                   >
                     <option value="">اختر الحركة</option>
+
                     {movementOptions.map((item) => (
                       <option key={item} value={item}>
                         {item}
@@ -596,12 +577,14 @@ export default function EditSprinkler() {
 
                 <div className="md:col-span-2">
                   <label className="form-label">العامل</label>
+
                   <select
                     className="form-input"
                     value={form.workerId}
                     onChange={(e) => onWorkerChange(e.target.value)}
                   >
                     <option value="">بدون عامل</option>
+
                     {workers.map((worker) => (
                       <option key={worker.id} value={worker.id}>
                         {worker.name}
