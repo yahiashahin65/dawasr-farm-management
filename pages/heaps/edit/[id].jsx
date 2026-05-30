@@ -11,6 +11,11 @@ import {
 
 import { db } from "../../../lib/firebase";
 import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
+import { addOfflineOperation, isOnline } from "../../../lib/offlineQueue";
+import {
+  getCachedCollection,
+  setCachedCollection,
+} from "../../../lib/realtimeCache";
 import {
   loadMultipleSettingOptions,
   DEFAULT_SYSTEM_SETTINGS,
@@ -20,6 +25,30 @@ import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 
 const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
+
+const updateHeapCache = (heapId, payload) => {
+  const cached = getCachedCollection("cache:heaps");
+
+  const updated = cached.map((item) =>
+    item.id === heapId
+      ? {
+          ...item,
+          ...payload,
+          id: heapId,
+          isOffline: true,
+          syncStatus: "pending",
+          updatedAt: new Date().toISOString(),
+        }
+      : item
+  );
+
+  setCachedCollection("cache:heaps", updated);
+};
+
+const getHeapFromCache = (heapId) => {
+  const cached = getCachedCollection("cache:heaps");
+  return cached.find((item) => item.id === heapId) || null;
+};
 
 export default function EditHeapPage() {
   const router = useRouter();
@@ -47,24 +76,30 @@ export default function EditHeapPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [farmsSnap, settings] = await Promise.all([
-        getDocs(collection(db, "farms")),
-        loadMultipleSettingOptions(["cropType"]),
-      ]);
+      try {
+        const [farmsSnap, settings] = await Promise.all([
+          getDocs(collection(db, "farms")),
+          loadMultipleSettingOptions(["cropType"]),
+        ]);
 
-      const cleanFarms = farmsSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((item) => item.name && item.name.trim() !== "");
+        const cleanFarms = farmsSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((item) => item.name && item.name.trim() !== "");
 
-      setFarms(cleanFarms);
+        setFarms(cleanFarms);
 
-      const settingsCropTypes = settings.cropType || [];
+        const settingsCropTypes = settings.cropType || [];
 
-      setCropOptions(
-        settingsCropTypes.length
-          ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
-          : DEFAULT_HEAP_CROP_TYPES
-      );
+        setCropOptions(
+          settingsCropTypes.length
+            ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
+            : DEFAULT_HEAP_CROP_TYPES
+        );
+      } catch {
+        const cachedFarms = getCachedCollection("cache:farms");
+        setFarms(cachedFarms);
+        setCropOptions(DEFAULT_HEAP_CROP_TYPES);
+      }
     };
 
     loadData();
@@ -74,7 +109,34 @@ export default function EditHeapPage() {
     if (!id) return;
 
     const fetchHeap = async () => {
+      setLoading(true);
+
       try {
+        const cachedHeap = getHeapFromCache(id);
+
+        if (cachedHeap) {
+          setForm({
+            pileName: cachedHeap.pileName || "",
+            farmId: cachedHeap.farmId || "",
+            farmName: cachedHeap.farmName || "",
+            cropType: cachedHeap.cropType || "غير معلوم",
+            sprinklerName: cachedHeap.sprinklerName || "",
+            bricksCount:
+              cachedHeap.bricksCount === null ||
+              cachedHeap.bricksCount === undefined
+                ? ""
+                : cachedHeap.bricksCount,
+            imageUrl: cachedHeap.imageUrl || "",
+            notes: cachedHeap.notes || "",
+          });
+
+          setLoading(false);
+
+          if (!isOnline()) {
+            return;
+          }
+        }
+
         const heapRef = doc(db, "heaps", id);
         const heapSnap = await getDoc(heapRef);
 
@@ -94,13 +156,34 @@ export default function EditHeapPage() {
             imageUrl: data.imageUrl || "",
             notes: data.notes || "",
           });
-        } else {
+        } else if (!cachedHeap) {
           alert("الكوم غير موجود");
           router.push("/heaps");
         }
       } catch (error) {
         console.error(error);
-        alert("حدث خطأ أثناء تحميل بيانات الكوم");
+
+        const cachedHeap = getHeapFromCache(id);
+
+        if (cachedHeap) {
+          setForm({
+            pileName: cachedHeap.pileName || "",
+            farmId: cachedHeap.farmId || "",
+            farmName: cachedHeap.farmName || "",
+            cropType: cachedHeap.cropType || "غير معلوم",
+            sprinklerName: cachedHeap.sprinklerName || "",
+            bricksCount:
+              cachedHeap.bricksCount === null ||
+              cachedHeap.bricksCount === undefined
+                ? ""
+                : cachedHeap.bricksCount,
+            imageUrl: cachedHeap.imageUrl || "",
+            notes: cachedHeap.notes || "",
+          });
+        } else {
+          alert("حدث خطأ أثناء تحميل بيانات الكوم");
+          router.push("/heaps");
+        }
       } finally {
         setLoading(false);
       }
@@ -132,6 +215,11 @@ export default function EditHeapPage() {
 
   const uploadImage = async () => {
     if (!image) return form.imageUrl || "";
+
+    if (!isOnline()) {
+      return form.imageUrl || "";
+    }
+
     return fileToFirestoreImage(image);
   };
 
@@ -159,11 +247,8 @@ export default function EditHeapPage() {
 
     try {
       const selectedFarm = farms.find((farm) => farm.id === form.farmId);
-      const imageUrl = await uploadImage();
 
-      const heapRef = doc(db, "heaps", id);
-
-      await updateDoc(heapRef, {
+      const basePayload = {
         pileName: form.pileName.trim(),
 
         farmId: form.farmId,
@@ -175,16 +260,90 @@ export default function EditHeapPage() {
 
         bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
 
-        imageUrl,
         notes: form.notes.trim(),
+      };
 
+      if (!isOnline()) {
+        const offlinePayload = {
+          ...basePayload,
+          imageUrl: form.imageUrl || "",
+        };
+
+        updateHeapCache(id, offlinePayload);
+
+        addOfflineOperation({
+          collectionName: "heaps",
+          operation: "update",
+          documentId: id,
+          payload: {
+            ...offlinePayload,
+            updatedAt: serverTimestamp(),
+          },
+          meta: {
+            label: "تعديل كوم",
+            name: offlinePayload.pileName,
+          },
+        });
+
+        alert("تم حفظ التعديل محليًا وسيتم رفعه عند عودة الاتصال");
+        router.push("/heaps");
+        return;
+      }
+
+      const imageUrl = await uploadImage();
+
+      const onlinePayload = {
+        ...basePayload,
+        imageUrl,
+      };
+
+      await updateDoc(doc(db, "heaps", id), {
+        ...onlinePayload,
         updatedAt: serverTimestamp(),
+      });
+
+      updateHeapCache(id, {
+        ...onlinePayload,
+        isOffline: false,
+        syncStatus: "synced",
       });
 
       router.push("/heaps");
     } catch (error) {
       console.error(error);
-      alert(error.message || "حدث خطأ أثناء تعديل الكوم");
+
+      const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+
+      const fallbackPayload = {
+        pileName: form.pileName.trim(),
+        farmId: form.farmId,
+        farmName: selectedFarm?.name || form.farmName || "",
+        cropType: form.cropType || "غير معلوم",
+        sprinklerName: form.sprinklerName.trim(),
+        bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
+        imageUrl: form.imageUrl || "",
+        notes: form.notes.trim(),
+      };
+
+      updateHeapCache(id, fallbackPayload);
+
+      addOfflineOperation({
+        collectionName: "heaps",
+        operation: "update",
+        documentId: id,
+        payload: {
+          ...fallbackPayload,
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "تعديل كوم",
+          name: fallbackPayload.pileName,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ التعديل محليًا وسيتم رفعه عند عودة الاتصال");
+      router.push("/heaps");
+    } finally {
       setSaving(false);
     }
   };
@@ -300,6 +459,13 @@ export default function EditHeapPage() {
                     alt="معاينة الصورة الجديدة"
                     className="max-h-72 w-full rounded-2xl object-contain"
                   />
+
+                  {!isOnline() && (
+                    <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
+                      الصورة الجديدة لن تُرفع أثناء عدم الاتصال. سيتم الاحتفاظ
+                      بالصورة الحالية حتى تعود للاتصال.
+                    </p>
+                  )}
 
                   <button
                     type="button"
