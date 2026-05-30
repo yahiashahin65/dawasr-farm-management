@@ -2,9 +2,18 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { doc, getDoc } from "firebase/firestore";
+
 import { db } from "../../lib/firebase";
+import { getCachedCollection } from "../../lib/realtimeCache";
+import { isOnline } from "../../lib/offlineQueue";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+
+const getHeapFromCache = (heapId) => {
+  const cached = getCachedCollection("cache:heaps");
+  return cached.find((item) => item.id === heapId) || null;
+};
 
 export default function HeapDetailsPage() {
   const router = useRouter();
@@ -12,12 +21,27 @@ export default function HeapDetailsPage() {
 
   const [heap, setHeap] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
     if (!id) return;
 
     const fetchHeap = async () => {
+      setLoading(true);
+
       try {
+        const cachedHeap = getHeapFromCache(id);
+
+        if (cachedHeap) {
+          setHeap(cachedHeap);
+
+          if (!isOnline()) {
+            setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
+            setLoading(false);
+            return;
+          }
+        }
+
         const heapRef = doc(db, "heaps", id);
         const heapSnap = await getDoc(heapRef);
 
@@ -26,10 +50,20 @@ export default function HeapDetailsPage() {
             id: heapSnap.id,
             ...heapSnap.data(),
           });
+        } else if (!cachedHeap) {
+          setHeap(null);
         }
       } catch (error) {
         console.error(error);
-        alert("حدث خطأ أثناء تحميل بيانات الكوم");
+
+        const cachedHeap = getHeapFromCache(id);
+
+        if (cachedHeap) {
+          setHeap(cachedHeap);
+          setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
+        } else {
+          alert("حدث خطأ أثناء تحميل بيانات الكوم");
+        }
       } finally {
         setLoading(false);
       }
@@ -47,6 +81,18 @@ export default function HeapDetailsPage() {
           <div className="page-card p-5">الكوم غير موجود</div>
         ) : (
           <div className="page-card max-w-5xl p-5 space-y-5">
+            {offlineNotice && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {offlineNotice}
+              </div>
+            )}
+
+            {heap.syncStatus === "pending" && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
+                هذا الكوم قيد المزامنة وسيتم رفع التغييرات عند عودة الاتصال
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-3">
               <h1 className="text-2xl font-black text-slate-800">
                 تفاصيل الكوم
