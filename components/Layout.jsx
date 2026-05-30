@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "firebase/auth";
+
 import { auth } from "../lib/firebase";
 import { startOfflineSyncListener } from "../lib/syncOfflineQueue";
+import { bootstrapOfflineCache } from "../lib/bootstrapCache";
 import useUserRole from "../hooks/useUserRole";
+
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faGaugeHigh,
@@ -114,8 +117,17 @@ export default function Layout({ children, title = "مزارع السنبلة" }
   useEffect(() => {
     const stopSync = startOfflineSyncListener();
 
+    const runBootstrapCache = () => {
+      bootstrapOfflineCache();
+    };
+
+    runBootstrapCache();
+
+    window.addEventListener("online", runBootstrapCache);
+
     return () => {
       stopSync?.();
+      window.removeEventListener("online", runBootstrapCache);
     };
   }, []);
 
