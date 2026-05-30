@@ -39,6 +39,36 @@ const updateEngineerCache = (engineerId, payload) => {
   setCachedCollection("cache:engineers", next);
 };
 
+const updateRelatedEngineerCache = (engineerId, engineerName, engineerPhone) => {
+  const cachedFarms = getCachedCollection("cache:farms");
+
+  setCachedCollection(
+    "cache:farms",
+    cachedFarms.map((farm) => {
+      if (!(farm.engineerIds || []).includes(engineerId)) return farm;
+
+      const engineers = Array.isArray(farm.engineers)
+        ? farm.engineers.map((engineer) =>
+            engineer.id === engineerId
+              ? {
+                  ...engineer,
+                  name: engineerName,
+                  phone: engineerPhone,
+                }
+              : engineer
+          )
+        : [];
+
+      return {
+        ...farm,
+        engineers,
+        engineerNames: engineers.map((engineer) => engineer.name).join("، "),
+        updatedAt: new Date().toISOString(),
+      };
+    })
+  );
+};
+
 export default function EditEngineer() {
   const router = useRouter();
   const { id } = router.query;
@@ -134,9 +164,10 @@ export default function EditEngineer() {
     };
 
     try {
-      if (!isOnline()) {
-        updateEngineerCache(id, payload);
+      updateEngineerCache(id, payload);
+      updateRelatedEngineerCache(id, payload.name, payload.phone);
 
+      if (!isOnline()) {
         addOfflineOperation({
           collectionName: "engineers",
           operation: "update",
@@ -151,6 +182,21 @@ export default function EditEngineer() {
           },
         });
 
+        addOfflineOperation({
+          collectionName: "engineers",
+          operation: "update-related-engineer-name",
+          documentId: id,
+          payload: {
+            engineerId: id,
+            engineerName: payload.name,
+            engineerPhone: payload.phone,
+          },
+          meta: {
+            label: "تحديث اسم المهندس في المزارع",
+            name: payload.name,
+          },
+        });
+
         alert("تم حفظ تعديل المهندس محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/engineers/${id}`);
         return;
@@ -161,10 +207,19 @@ export default function EditEngineer() {
         updatedAt: serverTimestamp(),
       });
 
-      updateEngineerCache(id, {
-        ...payload,
-        isOffline: false,
-        syncStatus: "synced",
+      addOfflineOperation({
+        collectionName: "engineers",
+        operation: "update-related-engineer-name",
+        documentId: id,
+        payload: {
+          engineerId: id,
+          engineerName: payload.name,
+          engineerPhone: payload.phone,
+        },
+        meta: {
+          label: "تحديث اسم المهندس في المزارع",
+          name: payload.name,
+        },
       });
 
       router.push(`/engineers/${id}`);
@@ -172,6 +227,7 @@ export default function EditEngineer() {
       console.error(error);
 
       updateEngineerCache(id, payload);
+      updateRelatedEngineerCache(id, payload.name, payload.phone);
 
       addOfflineOperation({
         collectionName: "engineers",
@@ -183,6 +239,21 @@ export default function EditEngineer() {
         },
         meta: {
           label: "تعديل مهندس",
+          name: payload.name,
+        },
+      });
+
+      addOfflineOperation({
+        collectionName: "engineers",
+        operation: "update-related-engineer-name",
+        documentId: id,
+        payload: {
+          engineerId: id,
+          engineerName: payload.name,
+          engineerPhone: payload.phone,
+        },
+        meta: {
+          label: "تحديث اسم المهندس في المزارع",
           name: payload.name,
         },
       });
