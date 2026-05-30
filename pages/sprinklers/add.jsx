@@ -12,11 +12,24 @@ import {
   loadMultipleSettingOptions,
   DEFAULT_SYSTEM_SETTINGS,
 } from "../../lib/systemSettings";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
+import {
+  getCachedCollection,
+  setCachedCollection,
+} from "../../lib/realtimeCache";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
+
+const createLocalId = () =>
+  `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const addToSprinklersCache = (sprinkler) => {
+  const cached = getCachedCollection("cache:sprinklers");
+  setCachedCollection("cache:sprinklers", [sprinkler, ...cached]);
+};
 
 const normalizeGear = (value) => {
   const text = String(value || "").replace(/\s/g, "");
@@ -84,19 +97,8 @@ export default function AddSprinkler() {
           ]),
         ]);
 
-        setFarms(
-          farmsSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
-
-        setWorkers(
-          workersSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
-        );
+        setFarms(farmsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setWorkers(workersSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
         setSettingOptions({
           sprinklerMovement:
@@ -104,6 +106,15 @@ export default function AddSprinkler() {
             DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
           cropType: settings.cropType || DEFAULT_SYSTEM_SETTINGS.cropType,
           gearType: settings.gearType || DEFAULT_SYSTEM_SETTINGS.gearType,
+        });
+      } catch {
+        setFarms(getCachedCollection("cache:farms"));
+        setWorkers(getCachedCollection("cache:workers"));
+
+        setSettingOptions({
+          sprinklerMovement: DEFAULT_SYSTEM_SETTINGS.sprinklerMovement,
+          cropType: DEFAULT_SYSTEM_SETTINGS.cropType,
+          gearType: DEFAULT_SYSTEM_SETTINGS.gearType,
         });
       } finally {
         setInitialLoading(false);
@@ -155,6 +166,11 @@ export default function AddSprinkler() {
   const uploadImage = async (file) => {
     if (!file) return;
 
+    if (!isOnline()) {
+      alert("لا يمكن رفع الصورة أثناء عدم الاتصال");
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -188,16 +204,27 @@ export default function AddSprinkler() {
   const submit = async (e) => {
     e.preventDefault();
 
-    if (!canManage) return;
+    if (!canManage || saving) return;
+
+    if (!form.name.trim()) {
+      alert("اسم الرشاش مطلوب");
+      return;
+    }
+
+    if (!form.farmName) {
+      alert("المزرعة مطلوبة");
+      return;
+    }
 
     setSaving(true);
 
     try {
       const cleanedGearName = normalizeGear(form.gearName);
+      const localId = createLocalId();
 
-      const docRef = await addDoc(collection(db, "sprinklers"), {
-        name: form.name,
-        sprinklerName: form.name,
+      const payload = {
+        name: form.name.trim(),
+        sprinklerName: form.name.trim(),
         farmName: form.farmName,
         machineName: form.machineName,
         gearName: cleanedGearName,
@@ -208,6 +235,42 @@ export default function AddSprinkler() {
         workerId: form.workerId,
         workerName: form.workerName,
         imageUrl: form.imageUrl || "",
+      };
+
+      if (!isOnline()) {
+        const localSprinkler = {
+          id: localId,
+          ...payload,
+          isOffline: true,
+          syncStatus: "pending",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        addToSprinklersCache(localSprinkler);
+
+        addOfflineOperation({
+          collectionName: "sprinklers",
+          operation: "create",
+          documentId: localId,
+          payload: {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          meta: {
+            label: "إضافة رشاش",
+            name: payload.name,
+          },
+        });
+
+        alert("تم حفظ الرشاش محليًا وسيتم رفعه عند عودة الاتصال");
+        router.push("/sprinklers");
+        return;
+      }
+
+      const docRef = await addDoc(collection(db, "sprinklers"), {
+        ...payload,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -215,7 +278,51 @@ export default function AddSprinkler() {
       router.push(`/sprinklers/${docRef.id}`);
     } catch (error) {
       console.error(error);
-      alert("حدث خطأ أثناء إضافة الرشاش");
+
+      const cleanedGearName = normalizeGear(form.gearName);
+      const localId = createLocalId();
+
+      const fallbackPayload = {
+        name: form.name.trim(),
+        sprinklerName: form.name.trim(),
+        farmName: form.farmName,
+        machineName: form.machineName,
+        gearName: cleanedGearName,
+        cropType: form.cropType,
+        movementType: form.movementType,
+        towersCount: Number(form.towersCount || 0),
+        hectareNumber: form.hectareNumber || "",
+        workerId: form.workerId,
+        workerName: form.workerName,
+        imageUrl: form.imageUrl || "",
+      };
+
+      addToSprinklersCache({
+        id: localId,
+        ...fallbackPayload,
+        isOffline: true,
+        syncStatus: "pending",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      addOfflineOperation({
+        collectionName: "sprinklers",
+        operation: "create",
+        documentId: localId,
+        payload: {
+          ...fallbackPayload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "إضافة رشاش",
+          name: fallbackPayload.name,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ الرشاش محليًا وسيتم رفعه عند عودة الاتصال");
+      router.push("/sprinklers");
     } finally {
       setSaving(false);
     }
@@ -296,17 +403,17 @@ export default function AddSprinkler() {
                 <div>
                   <label className="form-label">نوع المحصول</label>
                   <select
-  className="form-input"
-  value={form.cropType}
-  onChange={(e) => updateField("cropType", e.target.value)}
->
-  <option value="">اختر نوع المحصول</option>
-  {cropOptions.map((item) => (
-    <option key={item} value={item}>
-      {item}
-    </option>
-  ))}
-</select>
+                    className="form-input"
+                    value={form.cropType}
+                    onChange={(e) => updateField("cropType", e.target.value)}
+                  >
+                    <option value="">اختر نوع المحصول</option>
+                    {cropOptions.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -389,6 +496,13 @@ export default function AddSprinkler() {
                   className="form-input mt-4"
                   onChange={(e) => uploadImage(e.target.files?.[0])}
                 />
+
+                {!isOnline() && (
+                  <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
+                    لا يمكن رفع الصورة أثناء عدم الاتصال. يمكن إضافة الرشاش الآن
+                    ورفع الصورة لاحقًا.
+                  </p>
+                )}
               </div>
 
               <div className="mt-5 flex gap-2">
@@ -414,4 +528,4 @@ export default function AddSprinkler() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+  }
