@@ -1,17 +1,39 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+
 import { db } from "../../lib/firebase";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
+import {
+  getCachedCollection,
+  setCachedCollection,
+} from "../../lib/realtimeCache";
+
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 
+const createLocalId = () =>
+  `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const addAssetTypeToCache = (type) => {
+  const cached = getCachedCollection("cache:assetTypes");
+  setCachedCollection("cache:assetTypes", [type, ...cached]);
+};
+
 export default function AddAssetType() {
   const router = useRouter();
-  const [form, setForm] = useState({ name: "", notes: "" });
+
+  const [form, setForm] = useState({
+    name: "",
+    notes: "",
+  });
+
   const [loading, setLoading] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
+
+    if (loading) return;
 
     const name = form.name.trim();
     const notes = form.notes.trim();
@@ -23,10 +45,46 @@ export default function AddAssetType() {
 
     setLoading(true);
 
+    const localId = createLocalId();
+
+    const payload = {
+      name,
+      notes,
+    };
+
     try {
+      if (!isOnline()) {
+        addAssetTypeToCache({
+          id: localId,
+          ...payload,
+          isOffline: true,
+          syncStatus: "pending",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        addOfflineOperation({
+          collectionName: "assetTypes",
+          operation: "create",
+          documentId: localId,
+          payload: {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          meta: {
+            label: "إضافة نوع معدة",
+            name: payload.name,
+          },
+        });
+
+        alert("تم حفظ نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
+        router.push("/asset-types");
+        return;
+      }
+
       await addDoc(collection(db, "assetTypes"), {
-        name,
-        notes,
+        ...payload,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -34,7 +92,34 @@ export default function AddAssetType() {
       router.push("/asset-types");
     } catch (error) {
       console.error(error);
-      alert("حدث خطأ أثناء حفظ نوع المعدة");
+
+      addAssetTypeToCache({
+        id: localId,
+        ...payload,
+        isOffline: true,
+        syncStatus: "pending",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      addOfflineOperation({
+        collectionName: "assetTypes",
+        operation: "create",
+        documentId: localId,
+        payload: {
+          ...payload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "إضافة نوع معدة",
+          name: payload.name,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
+      router.push("/asset-types");
+    } finally {
       setLoading(false);
     }
   };
@@ -54,7 +139,9 @@ export default function AddAssetType() {
             className="form-input h-28"
             placeholder="ملاحظات اختيارية"
             value={form.notes}
-            onChange={(event) => setForm({ ...form, notes: event.target.value })}
+            onChange={(event) =>
+              setForm({ ...form, notes: event.target.value })
+            }
           />
 
           <button disabled={loading} className="btn-primary">
@@ -64,4 +151,4 @@ export default function AddAssetType() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
