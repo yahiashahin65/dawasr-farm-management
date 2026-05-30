@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { subscribeCachedCollection } from "../../lib/realtimeCache";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -18,38 +18,23 @@ export default function WorkshopAssets() {
   const [assets, setAssets] = useState([]);
   const [search, setSearch] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
-
-  const loadWorkshopAssets = async () => {
-    let snap;
-
-    try {
-      snap = await getDocs(
-        query(collection(db, "assets"), orderBy("updatedAt", "desc"))
-      );
-    } catch {
-      snap = await getDocs(collection(db, "assets"));
-    }
-
-    setAssets(
-      snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
-  };
+  const [realtimeError, setRealtimeError] = useState("");
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribe = subscribeCachedCollection({
+      db,
+      collectionName: "assets",
+      cacheKey: "cache:assets",
+      orderField: "updatedAt",
+      orderDirection: "desc",
+      onData: setAssets,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات أصول الورش لحظيًا");
+      },
+    });
 
-      try {
-        await loadWorkshopAssets();
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadInitialData();
+    return () => unsubscribe?.();
   }, []);
 
   const workshopAssets = useMemo(() => {
@@ -109,11 +94,18 @@ export default function WorkshopAssets() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 grid gap-3 lg:grid-cols-3">
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">
                   إجمالي في الورشة
                 </p>
+
                 <h3 className="mt-2 text-4xl font-black">
                   {workshopAssets.length}
                 </h3>
@@ -121,6 +113,7 @@ export default function WorkshopAssets() {
 
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">عدد الورش</p>
+
                 <h3 className="mt-2 text-4xl font-black">
                   {workshopGroups.length}
                 </h3>
@@ -128,6 +121,7 @@ export default function WorkshopAssets() {
 
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">فلترة</p>
+
                 <input
                   className="form-input mt-2"
                   placeholder="بحث باسم الأصل أو الورشة"
@@ -164,7 +158,17 @@ export default function WorkshopAssets() {
                     <tbody>
                       {group.items.map((asset) => (
                         <tr key={asset.id} className="border-t border-slate-100">
-                          <td className="table-td font-bold">{asset.name}</td>
+                          <td className="table-td font-bold">
+                            <div className="flex flex-col gap-1">
+                              <span>{asset.name || "-"}</span>
+
+                              {asset.syncStatus === "pending" && (
+                                <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                  قيد المزامنة
+                                </span>
+                              )}
+                            </div>
+                          </td>
 
                           <td className="table-td">
                             <span className="badge bg-purple-50 text-purple-700">
