@@ -3,7 +3,12 @@ import Link from "next/link";
 import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
-import { subscribeCachedCollection } from "../../lib/realtimeCache";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -22,6 +27,14 @@ import {
 import useUserRole from "../../hooks/useUserRole";
 
 const PAGE_SIZE = 10;
+
+const removeFromHeapsCache = (heapId) => {
+  const cached = getCachedCollection("cache:heaps");
+  setCachedCollection(
+    "cache:heaps",
+    cached.filter((item) => item.id !== heapId)
+  );
+};
 
 export default function HeapsPage() {
   const { canManage } = useUserRole();
@@ -76,7 +89,9 @@ export default function HeapsPage() {
   }, [filteredItems]);
 
   const totalFarms = useMemo(() => {
-    return new Set(filteredItems.map((item) => item.farmId || item.farmName).filter(Boolean)).size;
+    return new Set(
+      filteredItems.map((item) => item.farmId || item.farmName).filter(Boolean)
+    ).size;
   }, [filteredItems]);
 
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
@@ -102,12 +117,49 @@ export default function HeapsPage() {
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (confirm("هل تريد حذف الكوم؟")) {
-      await deleteDoc(doc(db, "heaps", id));
+    if (!confirm("هل تريد حذف الكوم؟")) return;
 
-      if (paginatedItems.length === 1 && currentPage > 1) {
-        setCurrentPage((prev) => prev - 1);
-      }
+    const target = items.find((item) => item.id === id);
+
+    removeFromHeapsCache(id);
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "heaps",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف كوم",
+          name: target?.pileName || "",
+        },
+      });
+
+      alert("تم حذف الكوم محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "heaps", id));
+    } catch (error) {
+      console.error(error);
+
+      addOfflineOperation({
+        collectionName: "heaps",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف كوم",
+          name: target?.pileName || "",
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
     }
   };
 
@@ -130,7 +182,9 @@ export default function HeapsPage() {
 
             <div className="mb-4 grid gap-3 md:grid-cols-3">
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">إجمالي الأكوام</p>
+                <p className="text-sm font-bold text-slate-500">
+                  إجمالي الأكوام
+                </p>
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
                   {filteredItems.length}
                 </h3>
@@ -214,7 +268,15 @@ export default function HeapsPage() {
                     paginatedItems.map((item) => (
                       <tr key={item.id} className="border-t border-slate-100">
                         <td className="table-td font-bold">
-                          {item.pileName || "-"}
+                          <div className="flex flex-col gap-1">
+                            <span>{item.pileName || "-"}</span>
+
+                            {item.syncStatus === "pending" && (
+                              <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                قيد المزامنة
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="table-td">
