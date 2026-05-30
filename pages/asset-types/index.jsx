@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -17,7 +16,6 @@ import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-
 import {
   faPlus,
   faPen,
@@ -25,9 +23,16 @@ import {
   faMagnifyingGlass,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { normalizeList } from "../../lib/inventory";
-
 const PAGE_SIZE = 10;
+
+const removeAssetTypeFromCache = (typeId) => {
+  const cached = getCachedCollection("cache:assetTypes");
+
+  setCachedCollection(
+    "cache:assetTypes",
+    cached.filter((item) => item.id !== typeId)
+  );
+};
 
 export default function AssetTypes() {
   const { canManage } = useUserRole();
@@ -37,39 +42,39 @@ export default function AssetTypes() {
   const [search, setSearch] = useState("");
 
   const [initialLoading, setInitialLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const loadAssets = async () => {
-    const assetsSnap = await getDocs(collection(db, "assets"));
-
-    setAssets(
-      assetsSnap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }))
-    );
-  };
-
-  const loadTypes = async () => {
-    const snap = await getDocs(
-      query(collection(db, "assetTypes"), orderBy("createdAt", "desc"))
-    );
-
-    setItems(normalizeList(snap.docs));
-  };
-
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribeTypes = subscribeCachedCollection({
+      db,
+      collectionName: "assetTypes",
+      cacheKey: "cache:assetTypes",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات أنواع المعدات لحظيًا");
+      },
+    });
 
-      try {
-        await Promise.all([loadAssets(), loadTypes()]);
-      } finally {
-        setInitialLoading(false);
-      }
+    const unsubscribeAssets = subscribeCachedCollection({
+      db,
+      collectionName: "assets",
+      cacheKey: "cache:assets",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setAssets,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا");
+      },
+    });
+
+    return () => {
+      unsubscribeTypes?.();
+      unsubscribeAssets?.();
     };
-
-    loadInitialData();
   }, []);
 
   const count = (type) =>
@@ -78,9 +83,11 @@ export default function AssetTypes() {
   const filteredItems = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
-    if (!keyword) return items;
+    const cleanItems = items.filter((item) => item.name && item.name.trim());
 
-    return items.filter((type) => {
+    if (!keyword) return cleanItems;
+
+    return cleanItems.filter((type) => {
       const haystack = `${type.name || ""} ${type.notes || ""}`.toLowerCase();
 
       return haystack.includes(keyword);
@@ -88,6 +95,12 @@ export default function AssetTypes() {
   }, [items, search]);
 
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedItems = useMemo(() => {
     return filteredItems.slice(
@@ -99,14 +112,50 @@ export default function AssetTypes() {
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (confirm("هل تريد حذف نوع المعدة؟")) {
+    if (!confirm("هل تريد حذف نوع المعدة؟")) return;
+
+    const target = items.find((item) => item.id === id);
+
+    removeAssetTypeFromCache(id);
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "assetTypes",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف نوع معدة",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تم حذف نوع المعدة محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
       await deleteDoc(doc(db, "assetTypes", id));
+    } catch (error) {
+      console.error(error);
 
-      await Promise.all([loadTypes(), loadAssets()]);
+      addOfflineOperation({
+        collectionName: "assetTypes",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف نوع معدة",
+          name: target?.name || "",
+        },
+      });
 
-      if (paginatedItems.length === 1 && currentPage > 1) {
-        setCurrentPage((prev) => prev - 1);
-      }
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
     }
   };
 
@@ -121,6 +170,12 @@ export default function AssetTypes() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2">
                 {canManage && (
@@ -176,12 +231,20 @@ export default function AssetTypes() {
                       className="clickable-row border-t border-slate-100"
                     >
                       <td className="table-td font-black">
-                        <Link
-                          href={`/assets?assetTypeId=${type.id}`}
-                          className="text-green-700 hover:underline"
-                        >
-                          {type.name}
-                        </Link>
+                        <div className="flex flex-col gap-1">
+                          <Link
+                            href={`/assets?assetTypeId=${type.id}`}
+                            className="text-green-700 hover:underline"
+                          >
+                            {type.name}
+                          </Link>
+
+                          {type.syncStatus === "pending" && (
+                            <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                              قيد المزامنة
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="table-td">
@@ -231,30 +294,34 @@ export default function AssetTypes() {
               </table>
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filteredItems.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">
-                صفحة {currentPage} من {totalPages}
-              </span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
     </ProtectedRoute>
   );
-}
+      }
