@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "firebase/auth";
@@ -21,6 +22,8 @@ import {
   faDroplet,
   faLeaf,
   faGear,
+  faWifi,
+  faCloudArrowUp,
 } from "@fortawesome/free-solid-svg-icons";
 
 const links = [
@@ -43,6 +46,65 @@ const links = [
   { href: "/workers", label: "العمال", icon: faUsers },
   { href: "/settings", label: "الإعدادات", icon: faGear },
 ];
+
+const getPendingQueueCount = () => {
+  if (typeof window === "undefined") return 0;
+
+  try {
+    const queue = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
+    return Array.isArray(queue) ? queue.length : 0;
+  } catch {
+    return 0;
+  }
+};
+
+function ConnectionStatus() {
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const updateStatus = () => {
+      setIsOnline(navigator.onLine);
+      setPendingCount(getPendingQueueCount());
+    };
+
+    updateStatus();
+
+    window.addEventListener("online", updateStatus);
+    window.addEventListener("offline", updateStatus);
+    window.addEventListener("offline-queue-updated", updateStatus);
+    window.addEventListener("storage", updateStatus);
+
+    return () => {
+      window.removeEventListener("online", updateStatus);
+      window.removeEventListener("offline", updateStatus);
+      window.removeEventListener("offline-queue-updated", updateStatus);
+      window.removeEventListener("storage", updateStatus);
+    };
+  }, []);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-xs font-black ${
+          isOnline
+            ? "bg-green-50 text-green-700"
+            : "bg-red-50 text-red-700"
+        }`}
+      >
+        <FontAwesomeIcon icon={faWifi} className="h-3 w-3" />
+        {isOnline ? "متصل" : "غير متصل"}
+      </span>
+
+      {pendingCount > 0 && (
+        <span className="inline-flex items-center gap-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-black text-amber-700">
+          <FontAwesomeIcon icon={faCloudArrowUp} className="h-3 w-3" />
+          {pendingCount} عملية تنتظر المزامنة
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function Layout({ children, title = "مزارع السنبلة" }) {
   const router = useRouter();
@@ -135,13 +197,20 @@ export default function Layout({ children, title = "مزارع السنبلة" }
               </div>
             </div>
 
-            <button
-              onClick={logout}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-700 transition hover:bg-red-100 lg:hidden"
-              title="تسجيل الخروج"
-            >
-              <FontAwesomeIcon icon={faRightFromBracket} className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <ConnectionStatus />
+
+              <button
+                onClick={logout}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-50 text-red-700 transition hover:bg-red-100 lg:hidden"
+                title="تسجيل الخروج"
+              >
+                <FontAwesomeIcon
+                  icon={faRightFromBracket}
+                  className="h-4 w-4"
+                />
+              </button>
+            </div>
           </div>
 
           <nav className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
