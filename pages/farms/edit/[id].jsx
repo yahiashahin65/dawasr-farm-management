@@ -20,12 +20,114 @@ import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
 
+const getFarmFromCache = (farmId) => {
+  const cached = getCachedCollection("cache:farms");
+  return cached.find((item) => item.id === farmId) || null;
+};
+
+const cleanList = (items = []) =>
+  items.filter((item) => item.name && item.name.trim() !== "");
+
+const updateFarmCache = (farmId, payload) => {
+  const cached = getCachedCollection("cache:farms");
+  const exists = cached.some((item) => item.id === farmId);
+
+  const updatedItem = {
+    id: farmId,
+    ...payload,
+    isOffline: true,
+    syncStatus: "pending",
+    updatedAt: new Date().toISOString(),
+  };
+
+  const next = exists
+    ? cached.map((item) =>
+        item.id === farmId ? { ...item, ...updatedItem } : item
+      )
+    : [updatedItem, ...cached];
+
+  setCachedCollection("cache:farms", next);
+};
+
+const updateRelatedFarmCache = (farmId, farmName) => {
+  const cachedAssets = getCachedCollection("cache:assets");
+
+  setCachedCollection(
+    "cache:assets",
+    cachedAssets.map((asset) => {
+      const isRelated =
+        asset.farmId === farmId ||
+        (asset.placeType === "farm" && asset.placeId === farmId);
+
+      if (!isRelated) return asset;
+
+      return {
+        ...asset,
+        farmName,
+        placeName: asset.placeType === "farm" ? farmName : asset.placeName,
+        currentPlace:
+          asset.placeType === "farm"
+            ? {
+                ...(asset.currentPlace || {}),
+                id: farmId,
+                type: "farm",
+                name: farmName,
+              }
+            : asset.currentPlace,
+        updatedAt: new Date().toISOString(),
+      };
+    })
+  );
+
+  const cachedHeaps = getCachedCollection("cache:heaps");
+
+  setCachedCollection(
+    "cache:heaps",
+    cachedHeaps.map((heap) =>
+      heap.farmId === farmId
+        ? {
+            ...heap,
+            farmName,
+            updatedAt: new Date().toISOString(),
+          }
+        : heap
+    )
+  );
+
+  const cachedSprinklers = getCachedCollection("cache:sprinklers");
+
+  setCachedCollection(
+    "cache:sprinklers",
+    cachedSprinklers.map((sprinkler) => {
+      const isRelated =
+        sprinkler.farmId === farmId || sprinkler.farmName === farmName;
+
+      if (sprinkler.farmId === farmId) {
+        return {
+          ...sprinkler,
+          farmName,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      return isRelated
+        ? {
+            ...sprinkler,
+            farmName,
+            updatedAt: new Date().toISOString(),
+          }
+        : sprinkler;
+    })
+  );
+};
+
 export default function EditFarm() {
   const router = useRouter();
   const { id } = router.query;
 
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [offlineNotice, setOfflineNotice] = useState("");
 
   const [engineers, setEngineers] = useState([]);
 
@@ -40,9 +142,11 @@ export default function EditFarm() {
     if (!id) return;
 
     const loadData = async () => {
+      setInitialLoading(true);
+
       try {
-        const cachedFarms = getCachedCollection("cache:farms");
-        const cachedFarm = cachedFarms.find((x) => x.id === id);
+        const cachedFarm = getFarmFromCache(id);
+        const cachedEngineers = cleanList(getCachedCollection("cache:engineers"));
 
         if (cachedFarm) {
           setForm({
@@ -52,8 +156,12 @@ export default function EditFarm() {
             engineerIds: cachedFarm.engineerIds || [],
           });
 
+          setEngineers(cachedEngineers);
+
           if (!isOnline()) {
-            setLoading(false);
+            setOfflineNotice("يتم تعديل البيانات من الكاش لأن الجهاز غير متصل");
+            setInitialLoading(false);
+            return;
           }
         }
 
@@ -63,10 +171,12 @@ export default function EditFarm() {
         ]);
 
         setEngineers(
-          engineersSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          }))
+          engineersSnap.docs
+            .map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }))
+            .filter((item) => item.name && item.name.trim() !== "")
         );
 
         if (farmSnap.exists()) {
@@ -78,16 +188,36 @@ export default function EditFarm() {
             notes: data.notes || "",
             engineerIds: data.engineerIds || [],
           });
+        } else if (!cachedFarm) {
+          alert("المزرعة غير موجودة");
+          router.push("/farms");
         }
       } catch (error) {
         console.error(error);
+
+        const cachedFarm = getFarmFromCache(id);
+
+        if (cachedFarm) {
+          setForm({
+            name: cachedFarm.name || "",
+            managerName: cachedFarm.managerName || "",
+            notes: cachedFarm.notes || "",
+            engineerIds: cachedFarm.engineerIds || [],
+          });
+
+          setEngineers(cleanList(getCachedCollection("cache:engineers")));
+          setOfflineNotice("تعذر الاتصال، يتم تعديل آخر نسخة محفوظة من الكاش");
+        } else {
+          alert("حدث خطأ أثناء تحميل بيانات المزرعة");
+          router.push("/farms");
+        }
       } finally {
-        setLoading(false);
+        setInitialLoading(false);
       }
     };
 
     loadData();
-  }, [id]);
+  }, [id, router]);
 
   const toggle = (engineerId) => {
     setForm((prev) => ({
@@ -98,24 +228,10 @@ export default function EditFarm() {
     }));
   };
 
-  const updateFarmCache = (farmId, payload) => {
-    const cached = getCachedCollection("cache:farms");
-
-    const updated = cached.map((item) =>
-      item.id === farmId
-        ? {
-            ...item,
-            ...payload,
-            syncStatus: "pending",
-          }
-        : item
-    );
-
-    setCachedCollection("cache:farms", updated);
-  };
-
   const submit = async (e) => {
     e.preventDefault();
+
+    if (saving) return;
 
     if (!form.name.trim()) {
       alert("اسم المزرعة مطلوب");
@@ -124,32 +240,31 @@ export default function EditFarm() {
 
     setSaving(true);
 
+    const selectedEngineers = engineers.filter((item) =>
+      form.engineerIds.includes(item.id)
+    );
+
+    const payload = {
+      name: form.name.trim(),
+      managerName: form.managerName.trim(),
+      notes: form.notes.trim(),
+
+      engineerIds: form.engineerIds,
+
+      engineers: selectedEngineers.map((item) => ({
+        id: item.id,
+        name: item.name,
+        phone: item.phone || "",
+      })),
+
+      engineerNames: selectedEngineers.map((item) => item.name).join("، "),
+    };
+
     try {
-      const selectedEngineers = engineers.filter((x) =>
-        form.engineerIds.includes(x.id)
-      );
-
-      const payload = {
-        name: form.name.trim(),
-        managerName: form.managerName.trim(),
-        notes: form.notes.trim(),
-
-        engineerIds: form.engineerIds,
-
-        engineers: selectedEngineers.map((x) => ({
-          id: x.id,
-          name: x.name,
-          phone: x.phone || "",
-        })),
-
-        engineerNames: selectedEngineers
-          .map((x) => x.name)
-          .join("، "),
-      };
+      updateFarmCache(id, payload);
+      updateRelatedFarmCache(id, payload.name);
 
       if (!isOnline()) {
-        updateFarmCache(id, payload);
-
         addOfflineOperation({
           collectionName: "farms",
           operation: "update",
@@ -164,8 +279,21 @@ export default function EditFarm() {
           },
         });
 
-        alert("تم حفظ التعديلات محليًا وسيتم رفعها عند عودة الاتصال");
+        addOfflineOperation({
+          collectionName: "farms",
+          operation: "update-related-farm-name",
+          documentId: id,
+          payload: {
+            farmId: id,
+            farmName: payload.name,
+          },
+          meta: {
+            label: "تحديث اسم المزرعة في البيانات المرتبطة",
+            name: payload.name,
+          },
+        });
 
+        alert("تم حفظ التعديلات محليًا وسيتم رفعها عند عودة الاتصال");
         router.push("/farms");
         return;
       }
@@ -175,106 +303,147 @@ export default function EditFarm() {
         updatedAt: serverTimestamp(),
       });
 
+      addOfflineOperation({
+        collectionName: "farms",
+        operation: "update-related-farm-name",
+        documentId: id,
+        payload: {
+          farmId: id,
+          farmName: payload.name,
+        },
+        meta: {
+          label: "تحديث اسم المزرعة في البيانات المرتبطة",
+          name: payload.name,
+        },
+      });
+
       router.push("/farms");
     } catch (error) {
       console.error(error);
-      alert("حدث خطأ أثناء حفظ البيانات");
+
+      updateFarmCache(id, payload);
+      updateRelatedFarmCache(id, payload.name);
+
+      addOfflineOperation({
+        collectionName: "farms",
+        operation: "update",
+        documentId: id,
+        payload: {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        },
+        meta: {
+          label: "تعديل مزرعة",
+          name: payload.name,
+        },
+      });
+
+      addOfflineOperation({
+        collectionName: "farms",
+        operation: "update-related-farm-name",
+        documentId: id,
+        payload: {
+          farmId: id,
+          farmName: payload.name,
+        },
+        meta: {
+          label: "تحديث اسم المزرعة في البيانات المرتبطة",
+          name: payload.name,
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ التعديلات محليًا وسيتم رفعها عند عودة الاتصال");
+      router.push("/farms");
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <ProtectedRoute>
-        <Layout title="تعديل مزرعة">
+  return (
+    <ProtectedRoute>
+      <Layout title="تعديل مزرعة">
+        {initialLoading ? (
           <AppLoader
             variant="compact"
             title="جاري تحميل بيانات المزرعة..."
             subtitle="يتم تجهيز بيانات التعديل"
           />
-        </Layout>
-      </ProtectedRoute>
-    );
-  }
+        ) : (
+          <form onSubmit={submit} className="page-card max-w-3xl p-5 space-y-4">
+            {offlineNotice && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {offlineNotice}
+              </div>
+            )}
 
-  return (
-    <ProtectedRoute>
-      <Layout title="تعديل مزرعة">
-        <form
-          onSubmit={submit}
-          className="page-card max-w-3xl p-5 space-y-4"
-        >
-          <input
-            className="form-input"
-            placeholder="اسم المزرعة"
-            value={form.name}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                name: e.target.value,
-              })
-            }
-          />
+            <input
+              className="form-input"
+              placeholder="اسم المزرعة"
+              value={form.name}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  name: e.target.value,
+                })
+              }
+            />
 
-          <input
-            className="form-input"
-            placeholder="مسئول المزرعة / المشرف الداخلي"
-            value={form.managerName}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                managerName: e.target.value,
-              })
-            }
-          />
+            <input
+              className="form-input"
+              placeholder="مسئول المزرعة / المشرف الداخلي"
+              value={form.managerName}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  managerName: e.target.value,
+                })
+              }
+            />
 
-          <div>
-            <label className="mb-2 block text-sm font-black text-slate-700">
-              المهندسون المسئولون
-            </label>
+            <div>
+              <label className="mb-2 block text-sm font-black text-slate-700">
+                المهندسون المسئولون
+              </label>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              {engineers.map((engineer) => (
-                <label
-                  key={engineer.id}
-                  className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 text-sm font-bold ${
-                    form.engineerIds.includes(engineer.id)
-                      ? "border-green-600 bg-green-50 text-green-800"
-                      : "border-slate-200 bg-white text-slate-700"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.engineerIds.includes(engineer.id)}
-                    onChange={() => toggle(engineer.id)}
-                  />
+              <div className="grid gap-2 sm:grid-cols-2">
+                {engineers.map((engineer) => (
+                  <label
+                    key={engineer.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 text-sm font-bold ${
+                      form.engineerIds.includes(engineer.id)
+                        ? "border-green-600 bg-green-50 text-green-800"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.engineerIds.includes(engineer.id)}
+                      onChange={() => toggle(engineer.id)}
+                    />
 
-                  {engineer.name}
-                </label>
-              ))}
+                    {engineer.name}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <textarea
-            className="form-input h-28"
-            placeholder="ملاحظات"
-            value={form.notes}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                notes: e.target.value,
-              })
-            }
-          />
+            <textarea
+              className="form-input h-28"
+              placeholder="ملاحظات"
+              value={form.notes}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  notes: e.target.value,
+                })
+              }
+            />
 
-          <button
-            disabled={saving}
-            className="btn-primary"
-          >
-            {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
-          </button>
-        </form>
+            <button disabled={saving} className="btn-primary">
+              {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+            </button>
+          </form>
+        )}
       </Layout>
     </ProtectedRoute>
   );
