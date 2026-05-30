@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  limit,
-  startAfter,
-} from "firebase/firestore";
+import { deleteDoc, doc } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import {
+  getCachedCollection,
+  setCachedCollection,
+  subscribeCachedCollection,
+} from "../../lib/realtimeCache";
+import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
@@ -19,7 +16,6 @@ import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-
 import {
   faPlus,
   faMagnifyingGlass,
@@ -30,74 +26,39 @@ import {
 
 const PAGE_SIZE = 10;
 
+const removeKubraFromCache = (kubraId) => {
+  const cached = getCachedCollection("cache:kubras");
+
+  setCachedCollection(
+    "cache:kubras",
+    cached.filter((item) => item.id !== kubraId)
+  );
+};
+
 export default function Kubras() {
   const { canManage } = useUserRole();
 
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
-
   const [initialLoading, setInitialLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
-
+  const [realtimeError, setRealtimeError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [pageCursors, setPageCursors] = useState({ 1: null });
-
-  const loadKubrasPage = async (
-    pageNumber = 1,
-    cursor = null,
-    showLoader = true
-  ) => {
-    if (showLoader) setPageLoading(true);
-
-    try {
-      const constraints = [orderBy("createdAt", "desc")];
-
-      if (cursor) {
-        constraints.push(startAfter(cursor));
-      }
-
-      constraints.push(limit(PAGE_SIZE + 1));
-
-      const snap = await getDocs(
-        query(collection(db, "kubras"), ...constraints)
-      );
-
-      const docs = snap.docs;
-      const visibleDocs = docs.slice(0, PAGE_SIZE);
-
-      setItems(
-        visibleDocs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }))
-      );
-
-      setHasNextPage(docs.length > PAGE_SIZE);
-
-      setPageCursors((prev) => ({
-        ...prev,
-        [pageNumber + 1]: visibleDocs[visibleDocs.length - 1] || null,
-      }));
-
-      setCurrentPage(pageNumber);
-    } finally {
-      if (showLoader) setPageLoading(false);
-    }
-  };
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      setInitialLoading(true);
+    const unsubscribe = subscribeCachedCollection({
+      db,
+      collectionName: "kubras",
+      cacheKey: "cache:kubras",
+      orderField: "createdAt",
+      orderDirection: "desc",
+      onData: setItems,
+      onLoading: setInitialLoading,
+      onError: () => {
+        setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا");
+      },
+    });
 
-      try {
-        await loadKubrasPage(1, null, false);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadInitialData();
+    return () => unsubscribe?.();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -115,12 +76,68 @@ export default function Kubras() {
     });
   }, [items, search]);
 
+  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedItems = useMemo(() => {
+    return filteredItems.slice(
+      (currentPage - 1) * PAGE_SIZE,
+      currentPage * PAGE_SIZE
+    );
+  }, [filteredItems, currentPage]);
+
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (confirm("حذف الكِبرة؟")) {
+    if (!confirm("حذف الكِبرة؟")) return;
+
+    const target = items.find((item) => item.id === id);
+
+    removeKubraFromCache(id);
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
+    if (paginatedItems.length === 1 && currentPage > 1) {
+      setCurrentPage((prev) => prev - 1);
+    }
+
+    if (!isOnline()) {
+      addOfflineOperation({
+        collectionName: "kubras",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف كِبرة",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تم حذف الكِبرة محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      return;
+    }
+
+    try {
       await deleteDoc(doc(db, "kubras", id));
-      await loadKubrasPage(currentPage, pageCursors[currentPage] || null);
+    } catch (error) {
+      console.error(error);
+
+      addOfflineOperation({
+        collectionName: "kubras",
+        operation: "delete",
+        documentId: id,
+        payload: {},
+        meta: {
+          label: "حذف كِبرة",
+          name: target?.name || "",
+        },
+      });
+
+      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
     }
   };
 
@@ -135,6 +152,12 @@ export default function Kubras() {
           />
         ) : (
           <>
+            {realtimeError && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
+                {realtimeError}
+              </div>
+            )}
+
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="page-card flex flex-1 items-center gap-2 p-3">
                 <FontAwesomeIcon
@@ -146,7 +169,10 @@ export default function Kubras() {
                   className="w-full bg-transparent p-2 outline-none"
                   placeholder="بحث باسم الكِبرة أو الملاحظات..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setCurrentPage(1);
+                  }}
                 />
               </div>
 
@@ -158,20 +184,25 @@ export default function Kubras() {
               )}
             </div>
 
-            {pageLoading && (
-              <div className="page-card mb-4 p-4 text-center font-bold text-slate-500">
-                جاري تحميل البيانات...
-              </div>
-            )}
-
             <div className="mb-3 text-sm font-bold text-slate-500">
-              المعروض في هذه الصفحة: {filteredItems.length}
+              المعروض في هذه الصفحة: {paginatedItems.length} من إجمالي النتائج{" "}
+              {filteredItems.length}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredItems.map((kubra) => (
+              {paginatedItems.map((kubra) => (
                 <div key={kubra.id} className="page-card p-5">
-                  <h3 className="text-lg font-black">{kubra.name}</h3>
+                  <h3 className="text-lg font-black">
+                    <div className="flex flex-col gap-1">
+                      <span>{kubra.name || "-"}</span>
+
+                      {kubra.syncStatus === "pending" && (
+                        <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                          قيد المزامنة
+                        </span>
+                      )}
+                    </div>
+                  </h3>
 
                   <p className="mt-2 text-sm text-slate-500">
                     {kubra.notes || "-"}
@@ -213,35 +244,31 @@ export default function Kubras() {
               )}
             </div>
 
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                disabled={currentPage === 1 || pageLoading}
-                onClick={() =>
-                  loadKubrasPage(
-                    currentPage - 1,
-                    pageCursors[currentPage - 1] || null
-                  )
-                }
-                className="btn-secondary disabled:opacity-50"
-              >
-                السابق
-              </button>
+            {filteredItems.length > PAGE_SIZE && (
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  السابق
+                </button>
 
-              <span className="font-bold text-slate-700">صفحة {currentPage}</span>
+                <span className="font-bold text-slate-700">
+                  صفحة {currentPage} من {totalPages}
+                </span>
 
-              <button
-                disabled={!hasNextPage || pageLoading}
-                onClick={() =>
-                  loadKubrasPage(
-                    currentPage + 1,
-                    pageCursors[currentPage + 1]
-                  )
-                }
-                className="btn-secondary disabled:opacity-50"
-              >
-                التالي
-              </button>
-            </div>
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
           </>
         )}
       </Layout>
