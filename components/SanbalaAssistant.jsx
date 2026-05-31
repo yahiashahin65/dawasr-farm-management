@@ -81,9 +81,7 @@ export default function SanbalaAssistant() {
 
                   <div>
                     <h3 className="text-lg font-black">مساعد السنبلة</h3>
-                    <p className="text-xs font-bold text-green-50">
-                      مساعد ذكي محلي يعمل من بيانات الكاش
-                    </p>
+                    
                   </div>
                 </div>
 
