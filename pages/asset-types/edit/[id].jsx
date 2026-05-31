@@ -65,6 +65,37 @@ const updateLinkedAssetsCache = (typeId, typeName) => {
   );
 };
 
+const queueAssetTypeUpdate = (typeId, payload) => {
+  addOfflineOperation({
+    collectionName: "assetTypes",
+    operation: "update",
+    documentId: typeId,
+    payload: {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تعديل نوع معدة",
+      name: payload.name,
+    },
+  });
+
+  addOfflineOperation({
+    collectionName: "assets",
+    operation: "bulk-update-asset-type-name",
+    documentId: typeId,
+    payload: {
+      assetTypeId: typeId,
+      assetTypeName: payload.name,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تحديث اسم النوع في الأصول",
+      name: payload.name,
+    },
+  });
+};
+
 export default function EditAssetType() {
   const router = useRouter();
   const { id } = router.query;
@@ -137,23 +168,6 @@ export default function EditAssetType() {
     loadType();
   }, [id, router]);
 
-  const queueLinkedAssetsUpdate = (name) => {
-    addOfflineOperation({
-      collectionName: "assets",
-      operation: "bulk-update-asset-type-name",
-      documentId: id,
-      payload: {
-        assetTypeId: id,
-        assetTypeName: name,
-        updatedAt: serverTimestamp(),
-      },
-      meta: {
-        label: "تحديث اسم النوع في الأصول",
-        name,
-      },
-    });
-  };
-
   const submit = async (event) => {
     event.preventDefault();
 
@@ -179,21 +193,7 @@ export default function EditAssetType() {
       updateLinkedAssetsCache(id, name);
 
       if (!isOnline()) {
-        addOfflineOperation({
-          collectionName: "assetTypes",
-          operation: "update",
-          documentId: id,
-          payload: {
-            ...payload,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تعديل نوع معدة",
-            name,
-          },
-        });
-
-        queueLinkedAssetsUpdate(name);
+        queueAssetTypeUpdate(id, payload);
 
         alert("تم حفظ تعديل نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
         router.push("/asset-types");
@@ -225,21 +225,7 @@ export default function EditAssetType() {
       updateAssetTypeCache(id, payload);
       updateLinkedAssetsCache(id, name);
 
-      addOfflineOperation({
-        collectionName: "assetTypes",
-        operation: "update",
-        documentId: id,
-        payload: {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تعديل نوع معدة",
-          name,
-        },
-      });
-
-      queueLinkedAssetsUpdate(name);
+      queueAssetTypeUpdate(id, payload);
 
       alert("تعذر الاتصال، تم حفظ تعديل نوع المعدة محليًا وسيتم رفعه عند عودة الاتصال");
       router.push("/asset-types");
