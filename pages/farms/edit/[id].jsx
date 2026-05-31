@@ -98,27 +98,46 @@ const updateRelatedFarmCache = (farmId, farmName) => {
 
   setCachedCollection(
     "cache:sprinklers",
-    cachedSprinklers.map((sprinkler) => {
-      const isRelated =
-        sprinkler.farmId === farmId || sprinkler.farmName === farmName;
-
-      if (sprinkler.farmId === farmId) {
-        return {
-          ...sprinkler,
-          farmName,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-
-      return isRelated
+    cachedSprinklers.map((sprinkler) =>
+      sprinkler.farmId === farmId
         ? {
             ...sprinkler,
             farmName,
             updatedAt: new Date().toISOString(),
           }
-        : sprinkler;
-    })
+        : sprinkler
+    )
   );
+};
+
+const queueFarmUpdate = (farmId, payload) => {
+  addOfflineOperation({
+    collectionName: "farms",
+    operation: "update",
+    documentId: farmId,
+    payload: {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تعديل مزرعة",
+      name: payload.name,
+    },
+  });
+
+  addOfflineOperation({
+    collectionName: "farms",
+    operation: "update-related-farm-name",
+    documentId: farmId,
+    payload: {
+      farmId,
+      farmName: payload.name,
+    },
+    meta: {
+      label: "تحديث اسم المزرعة في البيانات المرتبطة",
+      name: payload.name,
+    },
+  });
 };
 
 export default function EditFarm() {
@@ -248,15 +267,12 @@ export default function EditFarm() {
       name: form.name.trim(),
       managerName: form.managerName.trim(),
       notes: form.notes.trim(),
-
       engineerIds: form.engineerIds,
-
       engineers: selectedEngineers.map((item) => ({
         id: item.id,
         name: item.name,
         phone: item.phone || "",
       })),
-
       engineerNames: selectedEngineers.map((item) => item.name).join("، "),
     };
 
@@ -265,33 +281,7 @@ export default function EditFarm() {
       updateRelatedFarmCache(id, payload.name);
 
       if (!isOnline()) {
-        addOfflineOperation({
-          collectionName: "farms",
-          operation: "update",
-          documentId: id,
-          payload: {
-            ...payload,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تعديل مزرعة",
-            name: payload.name,
-          },
-        });
-
-        addOfflineOperation({
-          collectionName: "farms",
-          operation: "update-related-farm-name",
-          documentId: id,
-          payload: {
-            farmId: id,
-            farmName: payload.name,
-          },
-          meta: {
-            label: "تحديث اسم المزرعة في البيانات المرتبطة",
-            name: payload.name,
-          },
-        });
+        queueFarmUpdate(id, payload);
 
         alert("تم حفظ التعديلات محليًا وسيتم رفعها عند عودة الاتصال");
         router.push("/farms");
@@ -303,20 +293,6 @@ export default function EditFarm() {
         updatedAt: serverTimestamp(),
       });
 
-      addOfflineOperation({
-        collectionName: "farms",
-        operation: "update-related-farm-name",
-        documentId: id,
-        payload: {
-          farmId: id,
-          farmName: payload.name,
-        },
-        meta: {
-          label: "تحديث اسم المزرعة في البيانات المرتبطة",
-          name: payload.name,
-        },
-      });
-
       router.push("/farms");
     } catch (error) {
       console.error(error);
@@ -324,33 +300,7 @@ export default function EditFarm() {
       updateFarmCache(id, payload);
       updateRelatedFarmCache(id, payload.name);
 
-      addOfflineOperation({
-        collectionName: "farms",
-        operation: "update",
-        documentId: id,
-        payload: {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تعديل مزرعة",
-          name: payload.name,
-        },
-      });
-
-      addOfflineOperation({
-        collectionName: "farms",
-        operation: "update-related-farm-name",
-        documentId: id,
-        payload: {
-          farmId: id,
-          farmName: payload.name,
-        },
-        meta: {
-          label: "تحديث اسم المزرعة في البيانات المرتبطة",
-          name: payload.name,
-        },
-      });
+      queueFarmUpdate(id, payload);
 
       alert("تعذر الاتصال، تم حفظ التعديلات محليًا وسيتم رفعها عند عودة الاتصال");
       router.push("/farms");
