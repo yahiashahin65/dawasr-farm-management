@@ -69,6 +69,37 @@ const updateRelatedEngineerCache = (engineerId, engineerName, engineerPhone) => 
   );
 };
 
+const queueEngineerUpdate = (engineerId, payload) => {
+  addOfflineOperation({
+    collectionName: "engineers",
+    operation: "update",
+    documentId: engineerId,
+    payload: {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تعديل مهندس",
+      name: payload.name,
+    },
+  });
+
+  addOfflineOperation({
+    collectionName: "engineers",
+    operation: "update-related-engineer-name",
+    documentId: engineerId,
+    payload: {
+      engineerId,
+      engineerName: payload.name,
+      engineerPhone: payload.phone,
+    },
+    meta: {
+      label: "تحديث اسم المهندس في المزارع",
+      name: payload.name,
+    },
+  });
+};
+
 export default function EditEngineer() {
   const router = useRouter();
   const { id } = router.query;
@@ -168,34 +199,7 @@ export default function EditEngineer() {
       updateRelatedEngineerCache(id, payload.name, payload.phone);
 
       if (!isOnline()) {
-        addOfflineOperation({
-          collectionName: "engineers",
-          operation: "update",
-          documentId: id,
-          payload: {
-            ...payload,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تعديل مهندس",
-            name: payload.name,
-          },
-        });
-
-        addOfflineOperation({
-          collectionName: "engineers",
-          operation: "update-related-engineer-name",
-          documentId: id,
-          payload: {
-            engineerId: id,
-            engineerName: payload.name,
-            engineerPhone: payload.phone,
-          },
-          meta: {
-            label: "تحديث اسم المهندس في المزارع",
-            name: payload.name,
-          },
-        });
+        queueEngineerUpdate(id, payload);
 
         alert("تم حفظ تعديل المهندس محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/engineers/${id}`);
@@ -207,21 +211,6 @@ export default function EditEngineer() {
         updatedAt: serverTimestamp(),
       });
 
-      addOfflineOperation({
-        collectionName: "engineers",
-        operation: "update-related-engineer-name",
-        documentId: id,
-        payload: {
-          engineerId: id,
-          engineerName: payload.name,
-          engineerPhone: payload.phone,
-        },
-        meta: {
-          label: "تحديث اسم المهندس في المزارع",
-          name: payload.name,
-        },
-      });
-
       router.push(`/engineers/${id}`);
     } catch (error) {
       console.error(error);
@@ -229,34 +218,7 @@ export default function EditEngineer() {
       updateEngineerCache(id, payload);
       updateRelatedEngineerCache(id, payload.name, payload.phone);
 
-      addOfflineOperation({
-        collectionName: "engineers",
-        operation: "update",
-        documentId: id,
-        payload: {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تعديل مهندس",
-          name: payload.name,
-        },
-      });
-
-      addOfflineOperation({
-        collectionName: "engineers",
-        operation: "update-related-engineer-name",
-        documentId: id,
-        payload: {
-          engineerId: id,
-          engineerName: payload.name,
-          engineerPhone: payload.phone,
-        },
-        meta: {
-          label: "تحديث اسم المهندس في المزارع",
-          name: payload.name,
-        },
-      });
+      queueEngineerUpdate(id, payload);
 
       alert("تعذر الاتصال، تم حفظ تعديل المهندس محليًا وسيتم رفعه عند عودة الاتصال");
       router.push(`/engineers/${id}`);
