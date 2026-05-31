@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
@@ -30,8 +31,42 @@ const SETTING_TYPES = [
   { value: "externalWorkshop", label: "الورش الخارجية" },
 ];
 
+const BACKUP_COLLECTIONS = [
+  "assets",
+  "assetTypes",
+  "farms",
+  "kubras",
+  "workers",
+  "engineers",
+  "heaps",
+  "sprinklers",
+  "assetMovements",
+  "systemSettings",
+];
+
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const serializeData = (value) => {
+  if (!value) return value;
+
+  if (value?.toDate) {
+    return value.toDate().toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(serializeData);
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value).reduce((acc, key) => {
+      acc[key] = serializeData(value[key]);
+      return acc;
+    }, {});
+  }
+
+  return value;
+};
 
 const addSettingToCache = (setting) => {
   const cached = getCachedCollection("cache:systemSettings");
@@ -73,6 +108,7 @@ export default function SettingsPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [realtimeError, setRealtimeError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exportingBackup, setExportingBackup] = useState(false);
 
   const [form, setForm] = useState({
     type: "sprinklerMovement",
@@ -91,6 +127,7 @@ export default function SettingsPage() {
       onLoading: setInitialLoading,
       onError: () => {
         setRealtimeError("تعذر تحديث إعدادات النظام لحظيًا");
+        setInitialLoading(false);
       },
     });
 
@@ -108,6 +145,69 @@ export default function SettingsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const exportBackup = async () => {
+    if (exportingBackup) return;
+
+    setExportingBackup(true);
+
+    try {
+      const backup = {
+        app: "farm-management",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        source: isOnline() ? "firestore" : "cache",
+        collections: {},
+      };
+
+      for (const collectionName of BACKUP_COLLECTIONS) {
+        let rows = [];
+
+        try {
+          if (isOnline()) {
+            const snap = await getDocs(collection(db, collectionName));
+
+            rows = snap.docs.map((item) => ({
+              id: item.id,
+              ...serializeData(item.data()),
+            }));
+          } else {
+            rows = getCachedCollection(`cache:${collectionName}`).map((item) =>
+              serializeData(item)
+            );
+          }
+        } catch (error) {
+          console.error(`Backup fallback for ${collectionName}`, error);
+
+          rows = getCachedCollection(`cache:${collectionName}`).map((item) =>
+            serializeData(item)
+          );
+        }
+
+        backup.collections[collectionName] = rows;
+      }
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      alert("حدث خطأ أثناء تصدير النسخة الاحتياطية");
+    } finally {
+      setExportingBackup(false);
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
 
@@ -120,8 +220,7 @@ export default function SettingsPage() {
 
     const exists = items.some(
       (item) =>
-        item.type === form.type &&
-        String(item.name || "").trim() === name
+        item.type === form.type && String(item.name || "").trim() === name
     );
 
     if (exists) {
@@ -482,6 +581,17 @@ export default function SettingsPage() {
                     className="btn-secondary w-full disabled:opacity-50"
                   >
                     إنشاء القيم الافتراضية
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={exportingBackup}
+                    onClick={exportBackup}
+                    className="btn-secondary w-full disabled:opacity-50"
+                  >
+                    {exportingBackup
+                      ? "جاري تصدير النسخة..."
+                      : "تصدير نسخة احتياطية JSON"}
                   </button>
                 </form>
               </div>
