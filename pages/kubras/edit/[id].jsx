@@ -70,6 +70,36 @@ const updateRelatedKubraCache = (kubraId, kubraName) => {
   );
 };
 
+const queueKubraUpdate = (kubraId, payload) => {
+  addOfflineOperation({
+    collectionName: "kubras",
+    operation: "update",
+    documentId: kubraId,
+    payload: {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تعديل كِبرة",
+      name: payload.name,
+    },
+  });
+
+  addOfflineOperation({
+    collectionName: "kubras",
+    operation: "update-related-kubra-name",
+    documentId: kubraId,
+    payload: {
+      kubraId,
+      kubraName: payload.name,
+    },
+    meta: {
+      label: "تحديث اسم الكِبرة في الأصول",
+      name: payload.name,
+    },
+  });
+};
+
 export default function EditKubra() {
   const router = useRouter();
   const { id } = router.query;
@@ -142,22 +172,6 @@ export default function EditKubra() {
     loadKubra();
   }, [id, router]);
 
-  const queueRelatedKubraUpdate = (payload) => {
-    addOfflineOperation({
-      collectionName: "kubras",
-      operation: "update-related-kubra-name",
-      documentId: id,
-      payload: {
-        kubraId: id,
-        kubraName: payload.name,
-      },
-      meta: {
-        label: "تحديث اسم الكِبرة في الأصول",
-        name: payload.name,
-      },
-    });
-  };
-
   const submit = async (e) => {
     e.preventDefault();
 
@@ -180,21 +194,7 @@ export default function EditKubra() {
       updateRelatedKubraCache(id, payload.name);
 
       if (!isOnline()) {
-        addOfflineOperation({
-          collectionName: "kubras",
-          operation: "update",
-          documentId: id,
-          payload: {
-            ...payload,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تعديل كِبرة",
-            name: payload.name,
-          },
-        });
-
-        queueRelatedKubraUpdate(payload);
+        queueKubraUpdate(id, payload);
 
         alert("تم حفظ تعديل الكِبرة محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/kubras/${id}`);
@@ -206,8 +206,6 @@ export default function EditKubra() {
         updatedAt: serverTimestamp(),
       });
 
-      queueRelatedKubraUpdate(payload);
-
       router.push(`/kubras/${id}`);
     } catch (error) {
       console.error(error);
@@ -215,21 +213,7 @@ export default function EditKubra() {
       updateKubraCache(id, payload);
       updateRelatedKubraCache(id, payload.name);
 
-      addOfflineOperation({
-        collectionName: "kubras",
-        operation: "update",
-        documentId: id,
-        payload: {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تعديل كِبرة",
-          name: payload.name,
-        },
-      });
-
-      queueRelatedKubraUpdate(payload);
+      queueKubraUpdate(id, payload);
 
       alert("تعذر الاتصال، تم حفظ تعديل الكِبرة محليًا وسيتم رفعه عند عودة الاتصال");
       router.push(`/kubras/${id}`);
