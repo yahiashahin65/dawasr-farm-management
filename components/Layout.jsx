@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { signOut } from "firebase/auth";
-
+import SanbalaAssistant from "./SanbalaAssistant";
 import { auth } from "../lib/firebase";
 import { startOfflineSyncListener } from "../lib/syncOfflineQueue";
 import { bootstrapOfflineCache } from "../lib/bootstrapCache";
@@ -260,6 +260,7 @@ export default function Layout({ children, title = "مزارع السنبلة" }
       </header>
 
       <main className="p-4 lg:mr-72 lg:p-6">{children}</main>
+      <SanbalaAssistant />
     </div>
   );
 }
