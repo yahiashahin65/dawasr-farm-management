@@ -583,16 +583,18 @@ export default function SettingsPage() {
                     إنشاء القيم الافتراضية
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={exportingBackup}
-                    onClick={exportBackup}
-                    className="btn-secondary w-full disabled:opacity-50"
-                  >
-                    {exportingBackup
-                      ? "جاري تصدير النسخة..."
-                      : "تصدير نسخة احتياطية JSON"}
-                  </button>
+                  {canManage && (
+  <button
+    type="button"
+    disabled={exportingBackup}
+    onClick={exportBackup}
+    className="btn-secondary w-full disabled:opacity-50"
+  >
+    {exportingBackup
+      ? "جاري تصدير النسخة..."
+      : "تصدير نسخة احتياطية JSON"}
+  </button>
+)}
                 </form>
               </div>
 
