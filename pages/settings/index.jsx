@@ -574,14 +574,7 @@ export default function SettingsPage() {
                     {saving ? "جاري الحفظ..." : "حفظ الإعداد"}
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={saving || !canManage}
-                    onClick={seedDefaults}
-                    className="btn-secondary w-full disabled:opacity-50"
-                  >
-                    إنشاء القيم الافتراضية
-                  </button>
+                  
 
                   {canManage && (
   <button
