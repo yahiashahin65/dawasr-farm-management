@@ -15,7 +15,6 @@ import {
   faDroplet,
   faSeedling,
   faChartLine,
-  faWifi,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { askSmartAssistant } from "../lib/smartAssistant";
@@ -113,16 +112,6 @@ const sections = [
       "افتح التحليلات",
     ],
   },
-  {
-    id: "offline",
-    title: "الأوفلاين والمزامنة",
-    icon: faWifi,
-    description: "حالة الاتصال والعمليات المنتظرة",
-    questions: [
-      "هل يوجد عمليات تنتظر المزامنة؟",
-      "اشرح الأوفلاين",
-    ],
-  },
 ];
 
 export default function SanbalaAssistant() {
@@ -174,7 +163,7 @@ export default function SanbalaAssistant() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed left-5 bottom-6 z-40 flex h-16 w-16 items-center justify-center rounded-3xl bg-green-700 text-white shadow-2xl shadow-green-900/30 transition hover:-translate-y-1 hover:bg-green-800"
+        className="fixed bottom-6 left-5 z-40 flex h-16 w-16 items-center justify-center rounded-3xl bg-green-700 text-white shadow-2xl shadow-green-900/30 transition hover:-translate-y-1 hover:bg-green-800"
         title="مساعد السنبلة"
       >
         <span className="absolute -right-1 -top-1 h-4 w-4 animate-ping rounded-full bg-emerald-300" />
@@ -191,13 +180,13 @@ export default function SanbalaAssistant() {
               <div className="absolute -left-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
               <div className="absolute -bottom-16 right-10 h-40 w-40 rounded-full bg-white/10" />
 
-              <div className="relative flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+              <div className="relative flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                     <FontAwesomeIcon icon={faSparkles} className="text-xl" />
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="text-lg font-black">مساعد السنبلة</h3>
                     <p className="mt-1 text-xs font-bold text-green-50">
                       مساعد موجه بإجابات دقيقة من بيانات النظام
@@ -208,7 +197,7 @@ export default function SanbalaAssistant() {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 hover:bg-white/25"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 hover:bg-white/25"
                 >
                   <FontAwesomeIcon icon={faXmark} />
                 </button>
@@ -334,7 +323,7 @@ export default function SanbalaAssistant() {
               }}
               className="border-t border-slate-100 bg-white p-4"
             >
-              <div className="mb-2 flex gap-2">
+              <div className="mb-2 flex justify-end">
                 <button
                   type="button"
                   onClick={resetAssistant}
@@ -360,7 +349,7 @@ export default function SanbalaAssistant() {
 
                 <button
                   type="submit"
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl bg-green-700 text-white hover:bg-green-800"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-green-700 text-white hover:bg-green-800"
                 >
                   <FontAwesomeIcon icon={faPaperPlane} />
                 </button>
