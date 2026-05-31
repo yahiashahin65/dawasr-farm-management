@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { db } from "../lib/firebase";
@@ -17,6 +17,8 @@ import {
   getAssetCategoryLabel,
   getPlaceTypeLabel,
 } from "../lib/inventory";
+
+const PAGE_SIZE = 20;
 
 function Section({ title, children }) {
   return (
@@ -93,6 +95,8 @@ const normalizeMovement = (value) => {
 };
 
 export default function Reports() {
+  const reportRef = useRef(null);
+
   const [assets, setAssets] = useState([]);
   const [types, setTypes] = useState([]);
   const [farms, setFarms] = useState([]);
@@ -104,12 +108,11 @@ export default function Reports() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadedMap, setLoadedMap] = useState({});
   const [realtimeError, setRealtimeError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [assetsPage, setAssetsPage] = useState(1);
 
   const markLoaded = (key) => {
-    setLoadedMap((prev) => ({
-      ...prev,
-      [key]: true,
-    }));
+    setLoadedMap((prev) => ({ ...prev, [key]: true }));
   };
 
   useEffect(() => {
@@ -126,7 +129,10 @@ export default function Reports() {
           setAssets(data);
           markLoaded("assets");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات الأصول لحظيًا");
+          markLoaded("assets");
+        },
       })
     );
 
@@ -141,7 +147,10 @@ export default function Reports() {
           setTypes(normalizeList(data));
           markLoaded("types");
         },
-        onError: () => setRealtimeError("تعذر تحديث أنواع الأصول لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث أنواع الأصول لحظيًا");
+          markLoaded("types");
+        },
       })
     );
 
@@ -156,7 +165,10 @@ export default function Reports() {
           setFarms(normalizeList(data));
           markLoaded("farms");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات المزارع لحظيًا");
+          markLoaded("farms");
+        },
       })
     );
 
@@ -171,7 +183,10 @@ export default function Reports() {
           setKubras(normalizeList(data));
           markLoaded("kubras");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات الكِبر لحظيًا");
+          markLoaded("kubras");
+        },
       })
     );
 
@@ -186,7 +201,10 @@ export default function Reports() {
           setWorkers(normalizeList(data));
           markLoaded("workers");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات العمال لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات العمال لحظيًا");
+          markLoaded("workers");
+        },
       })
     );
 
@@ -201,7 +219,10 @@ export default function Reports() {
           setHeaps(data);
           markLoaded("heaps");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا");
+          markLoaded("heaps");
+        },
       })
     );
 
@@ -216,7 +237,10 @@ export default function Reports() {
           setSprinklers(data);
           markLoaded("sprinklers");
         },
-        onError: () => setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا"),
+        onError: () => {
+          setRealtimeError("تعذر تحديث بيانات الرشاشات لحظيًا");
+          markLoaded("sprinklers");
+        },
       })
     );
 
@@ -261,28 +285,14 @@ export default function Reports() {
       const cropType = heap.cropType || "غير معلوم";
       const bricks = Number(heap.bricksCount || 0);
 
-      if (!byFarmMap[farmName]) {
-        byFarmMap[farmName] = { label: farmName, count: 0, bricks: 0 };
-      }
+      if (!byFarmMap[farmName]) byFarmMap[farmName] = { label: farmName, count: 0, bricks: 0 };
+      if (!bySprinklerMap[sprinklerKey]) bySprinklerMap[sprinklerKey] = { label: sprinklerKey, count: 0, bricks: 0 };
+      if (!byCropTypeMap[cropType]) byCropTypeMap[cropType] = { label: cropType, count: 0, bricks: 0 };
 
       byFarmMap[farmName].count += 1;
       byFarmMap[farmName].bricks += bricks;
-
-      if (!bySprinklerMap[sprinklerKey]) {
-        bySprinklerMap[sprinklerKey] = {
-          label: sprinklerKey,
-          count: 0,
-          bricks: 0,
-        };
-      }
-
       bySprinklerMap[sprinklerKey].count += 1;
       bySprinklerMap[sprinklerKey].bricks += bricks;
-
-      if (!byCropTypeMap[cropType]) {
-        byCropTypeMap[cropType] = { label: cropType, count: 0, bricks: 0 };
-      }
-
       byCropTypeMap[cropType].count += 1;
       byCropTypeMap[cropType].bricks += bricks;
     });
@@ -291,12 +301,8 @@ export default function Reports() {
       totalHeaps,
       totalBricks,
       byFarm: Object.values(byFarmMap).sort((a, b) => b.bricks - a.bricks),
-      bySprinkler: Object.values(bySprinklerMap).sort(
-        (a, b) => b.bricks - a.bricks
-      ),
-      byCropType: Object.values(byCropTypeMap).sort(
-        (a, b) => b.bricks - a.bricks
-      ),
+      bySprinkler: Object.values(bySprinklerMap).sort((a, b) => b.bricks - a.bricks),
+      byCropType: Object.values(byCropTypeMap).sort((a, b) => b.bricks - a.bricks),
       latest: heaps.slice(0, 5),
     };
   }, [heaps]);
@@ -318,65 +324,27 @@ export default function Reports() {
       if (item.workerId) workersSet.add(item.workerId);
       else if (item.workerName) workersSet.add(item.workerName);
 
-      if (farmName && farmName !== "غير محدد") {
-        farmsSet.add(farmName);
-      }
+      if (farmName && farmName !== "غير محدد") farmsSet.add(farmName);
 
-      if (!byFarmMap[farmName]) {
-        byFarmMap[farmName] = {
-          label: farmName,
-          count: 0,
-          href: `/sprinklers?farmName=${farmName}`,
-        };
-      }
+      if (!byFarmMap[farmName]) byFarmMap[farmName] = { label: farmName, count: 0, href: `/sprinklers?farmName=${farmName}` };
+      if (!byMovementMap[movementType]) byMovementMap[movementType] = { label: movementType, count: 0, href: "/sprinklers" };
+      if (!byCropTypeMap[cropType]) byCropTypeMap[cropType] = { label: cropType, count: 0, href: "/sprinklers" };
+      if (!byWorkerMap[workerName]) byWorkerMap[workerName] = { label: workerName, count: 0, href: item.workerId ? `/workers/${item.workerId}` : "/sprinklers" };
 
       byFarmMap[farmName].count += 1;
-
-      if (!byMovementMap[movementType]) {
-        byMovementMap[movementType] = {
-          label: movementType,
-          count: 0,
-          href: "/sprinklers",
-        };
-      }
-
       byMovementMap[movementType].count += 1;
-
-      if (!byCropTypeMap[cropType]) {
-        byCropTypeMap[cropType] = {
-          label: cropType,
-          count: 0,
-          href: "/sprinklers",
-        };
-      }
-
       byCropTypeMap[cropType].count += 1;
-
-      if (!byWorkerMap[workerName]) {
-        byWorkerMap[workerName] = {
-          label: workerName,
-          count: 0,
-          href: item.workerId ? `/workers/${item.workerId}` : "/sprinklers",
-        };
-      }
-
       byWorkerMap[workerName].count += 1;
     });
 
     return {
       total: sprinklers.length,
-      totalMachines: sprinklers.filter(
-        (item) => item.machineName || item.machine
-      ).length,
+      totalMachines: sprinklers.filter((item) => item.machineName || item.machine).length,
       totalWorkers: workersSet.size,
       totalFarms: farmsSet.size,
       byFarm: Object.values(byFarmMap).sort((a, b) => b.count - a.count),
-      byMovement: Object.values(byMovementMap).sort(
-        (a, b) => b.count - a.count
-      ),
-      byCropType: Object.values(byCropTypeMap).sort(
-        (a, b) => b.count - a.count
-      ),
+      byMovement: Object.values(byMovementMap).sort((a, b) => b.count - a.count),
+      byCropType: Object.values(byCropTypeMap).sort((a, b) => b.count - a.count),
       byWorker: Object.values(byWorkerMap).sort((a, b) => b.count - a.count),
     };
   }, [sprinklers]);
@@ -384,79 +352,102 @@ export default function Reports() {
   const rowsByStatus = [
     { label: "صالح", count: stats.good, href: "/assets?status=صالح" },
     { label: "عاطل", count: stats.broken, href: "/assets?status=عاطل" },
-    {
-      label: "في الورشة",
-      count: stats.inWorkshop,
-      href: "/assets?status=في الورشة",
-    },
+    { label: "في الورشة", count: stats.inWorkshop, href: "/assets?status=في الورشة" },
   ];
 
   const rowsByCategory = [
     { label: "معدات", count: stats.equipment, href: "/assets?category=asset" },
-    {
-      label: "قطع غيار",
-      count: stats.spareParts,
-      href: "/assets?category=spare_part",
-    },
+    { label: "قطع غيار", count: stats.spareParts, href: "/assets?category=spare_part" },
     { label: "أدوات", count: stats.tools, href: "/assets?category=tool" },
     { label: "مواد", count: stats.materials, href: "/assets?category=material" },
   ];
 
   const rowsByPlaceType = [
-    {
-      label: "داخل المزارع",
-      count: stats.inFarms,
-      href: "/assets?placeType=farm",
-    },
-    {
-      label: "داخل الكِبر",
-      count: stats.inKubras,
-      href: "/assets?placeType=kubra",
-    },
-    {
-      label: "ورش خارجية",
-      count: stats.inExternalWorkshops,
-      href: "/assets?placeType=external_workshop",
-    },
+    { label: "داخل المزارع", count: stats.inFarms, href: "/assets?placeType=farm" },
+    { label: "داخل الكِبر", count: stats.inKubras, href: "/assets?placeType=kubra" },
+    { label: "ورش خارجية", count: stats.inExternalWorkshops, href: "/assets?placeType=external_workshop" },
   ];
 
-  const rowsByType = types
-    .map((type) => ({
-      label: type.name,
-      count: assets.filter((asset) => asset.assetTypeId === type.id).length,
-      href: `/assets?assetTypeId=${type.id}`,
-    }))
-    .sort((a, b) => b.count - a.count);
+  const rowsByType = types.map((type) => ({
+    label: type.name,
+    count: assets.filter((asset) => asset.assetTypeId === type.id).length,
+    href: `/assets?assetTypeId=${type.id}`,
+  })).sort((a, b) => b.count - a.count);
 
-  const rowsByFarm = farms
-    .map((farm) => ({
-      label: farm.name,
-      count: assets.filter(
-        (asset) => asset.farmId === farm.id || asset.placeId === farm.id
-      ).length,
-      href: `/assets?farmId=${farm.id}`,
-    }))
-    .sort((a, b) => b.count - a.count);
+  const rowsByFarm = farms.map((farm) => ({
+    label: farm.name,
+    count: assets.filter((asset) => asset.farmId === farm.id || asset.placeId === farm.id).length,
+    href: `/assets?farmId=${farm.id}`,
+  })).sort((a, b) => b.count - a.count);
 
-  const rowsByKubra = kubras
-    .map((kubra) => ({
-      label: kubra.name,
-      count: assets.filter(
-        (asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id
-      ).length,
-      href: `/assets?kubraId=${kubra.id}`,
-    }))
-    .sort((a, b) => b.count - a.count);
+  const rowsByKubra = kubras.map((kubra) => ({
+    label: kubra.name,
+    count: assets.filter((asset) => asset.kubraId === kubra.id || asset.placeId === kubra.id).length,
+    href: `/assets?kubraId=${kubra.id}`,
+  })).sort((a, b) => b.count - a.count);
 
-  const rowsByWorker = workers
-    .map((worker) => ({
-      label: worker.name,
-      count: assets.filter((asset) =>
-        (asset.workerIds || []).includes(worker.id)
-      ).length,
-      href: `/assets?workerId=${worker.id}`,
-    }))
-    .sort((a, b) => b.count - a.count);
+  const rowsByWorker = workers.map((worker) => ({
+    label: worker.name,
+    count: assets.filter((asset) => (asset.workerIds || []).includes(worker.id)).length,
+    href: `/assets?workerId=${worker.id}`,
+  })).sort((a, b) => b.count - a.count);
+
+  const totalAssetsPages = Math.ceil(assets.length / PAGE_SIZE) || 1;
+
+  const paginatedAssets = useMemo(() => {
+    return assets.slice((assetsPage - 1) * PAGE_SIZE, assetsPage * PAGE_SIZE);
+  }, [assets, assetsPage]);
+
+  useEffect(() => {
+    if (assetsPage > totalAssetsPages) setAssetsPage(1);
+  }, [assetsPage, totalAssetsPages]);
+
+  const exportPdf = async () => {
+    if (!reportRef.current || exporting) return;
+
+    setExporting(true);
+
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        windowWidth: reportRef.current.scrollWidth,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`reports-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      console.error(error);
+      alert("حدث خطأ أثناء تصدير PDF");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -469,240 +460,234 @@ export default function Reports() {
           />
         ) : (
           <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  تقارير النظام
+                </h2>
+                <p className="mt-1 text-sm font-bold text-slate-500">
+                  تقارير الأصول والأكوام والرشاشات
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={exportPdf}
+                disabled={exporting}
+                className="btn-primary disabled:opacity-50"
+              >
+                {exporting ? "جاري تصدير PDF..." : "تصدير PDF"}
+              </button>
+            </div>
+
             {realtimeError && (
               <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-700">
                 {realtimeError}
               </div>
             )}
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              {rowsByStatus.map((row) => (
-                <Link key={row.label} href={row.href} className="page-card p-4">
-                  <p className="text-sm font-bold text-slate-500">{row.label}</p>
+            <div ref={reportRef} className="bg-white p-1" dir="rtl">
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                {rowsByStatus.map((row) => (
+                  <Link key={row.label} href={row.href} className="page-card p-4">
+                    <p className="text-sm font-bold text-slate-500">
+                      {row.label}
+                    </p>
+                    <h3 className="mt-2 text-4xl font-black text-slate-900">
+                      {row.count}
+                    </h3>
+                    <span className={`mt-3 inline-flex badge ${badgeClass(row.label)}`}>
+                      عرض الأصول
+                    </span>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Link href="/heaps" className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">إجمالي الأكوام</p>
                   <h3 className="mt-2 text-4xl font-black text-slate-900">
-                    {row.count}
+                    {heapStats.totalHeaps}
                   </h3>
-                  <span
-                    className={`mt-3 inline-flex badge ${badgeClass(row.label)}`}
-                  >
-                    عرض الأصول
+                  <span className="mt-3 inline-flex badge bg-green-50 text-green-700">
+                    عرض الأكوام
                   </span>
                 </Link>
-              ))}
-            </div>
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Link href="/heaps" className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">
-                  إجمالي الأكوام
-                </p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {heapStats.totalHeaps}
-                </h3>
-                <span className="mt-3 inline-flex badge bg-green-50 text-green-700">
-                  عرض الأكوام
-                </span>
-              </Link>
+                <div className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">إجمالي عدد اللبن</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {heapStats.totalBricks}
+                  </h3>
+                  <span className="mt-3 inline-flex badge bg-slate-100 text-slate-700">
+                    من الأكوام
+                  </span>
+                </div>
 
-              <div className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">
-                  إجمالي عدد اللبن
-                </p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {heapStats.totalBricks}
-                </h3>
-                <span className="mt-3 inline-flex badge bg-slate-100 text-slate-700">
-                  من الأكوام
-                </span>
+                <Link href="/sprinklers" className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">إجمالي الرشاشات</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {sprinklerStats.total}
+                  </h3>
+                  <span className="mt-3 inline-flex badge bg-blue-50 text-blue-700">
+                    عرض الرشاشات
+                  </span>
+                </Link>
+
+                <div className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">عدد المكائن</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {sprinklerStats.totalMachines}
+                  </h3>
+                </div>
               </div>
 
-              <Link href="/sprinklers" className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">
-                  إجمالي الرشاشات
-                </p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {sprinklerStats.total}
-                </h3>
-                <span className="mt-3 inline-flex badge bg-blue-50 text-blue-700">
-                  عرض الرشاشات
-                </span>
-              </Link>
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <div className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">عمال الرشاشات</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {sprinklerStats.totalWorkers}
+                  </h3>
+                </div>
 
-              <div className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">عدد المكائن</p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {sprinklerStats.totalMachines}
-                </h3>
-              </div>
-            </div>
-
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">
-                  عمال الرشاشات
-                </p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {sprinklerStats.totalWorkers}
-                </h3>
+                <div className="page-card p-4">
+                  <p className="text-sm font-bold text-slate-500">مزارع بها رشاشات</p>
+                  <h3 className="mt-2 text-4xl font-black text-slate-900">
+                    {sprinklerStats.totalFarms}
+                  </h3>
+                </div>
               </div>
 
-              <div className="page-card p-4">
-                <p className="text-sm font-bold text-slate-500">
-                  مزارع بها رشاشات
-                </p>
-                <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {sprinklerStats.totalFarms}
-                </h3>
+              <div className="grid gap-3 xl:grid-cols-2">
+                <Section title="الأصول والعهد حسب التصنيف"><RowList rows={rowsByCategory} /></Section>
+                <Section title="الأصول والعهد حسب نوع الأصل"><RowList rows={rowsByType} /></Section>
+                <Section title="الأصول والعهد حسب نوع المكان"><RowList rows={rowsByPlaceType} /></Section>
+                <Section title="الأصول والعهد حسب المزرعة"><RowList rows={rowsByFarm} /></Section>
+                <Section title="الأصول والعهد حسب الكِبرة"><RowList rows={rowsByKubra} /></Section>
+                <Section title="الأصول والعهد حسب العامل"><RowList rows={rowsByWorker} /></Section>
+                <Section title="الأكوام حسب النوع"><HeapReportList rows={heapStats.byCropType} /></Section>
+                <Section title="الأكوام حسب المزرعة"><HeapReportList rows={heapStats.byFarm} /></Section>
+                <Section title="الأكوام حسب المزرعة والرشاش"><HeapReportList rows={heapStats.bySprinkler} /></Section>
+                <Section title="الرشاشات حسب المزرعة"><RowList rows={sprinklerStats.byFarm} /></Section>
+                <Section title="الرشاشات حسب العامل"><RowList rows={sprinklerStats.byWorker} /></Section>
+                <Section title="الرشاشات حسب حركة الرشاش"><RowList rows={sprinklerStats.byMovement} /></Section>
+                <Section title="الرشاشات حسب نوع المحصول"><RowList rows={sprinklerStats.byCropType} /></Section>
               </div>
-            </div>
 
-            <div className="grid gap-3 xl:grid-cols-2">
-              <Section title="الأصول والعهد حسب التصنيف">
-                <RowList rows={rowsByCategory} />
-              </Section>
+              <div className="page-card mt-4 overflow-x-auto">
+                <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
 
-              <Section title="الأصول والعهد حسب نوع الأصل">
-                <RowList rows={rowsByType} />
-              </Section>
-
-              <Section title="الأصول والعهد حسب نوع المكان">
-                <RowList rows={rowsByPlaceType} />
-              </Section>
-
-              <Section title="الأصول والعهد حسب المزرعة">
-                <RowList rows={rowsByFarm} />
-              </Section>
-
-              <Section title="الأصول والعهد حسب الكِبرة">
-                <RowList rows={rowsByKubra} />
-              </Section>
-
-              <Section title="الأصول والعهد حسب العامل">
-                <RowList rows={rowsByWorker} />
-              </Section>
-
-              <Section title="الأكوام حسب النوع">
-                <HeapReportList rows={heapStats.byCropType} />
-              </Section>
-
-              <Section title="الأكوام حسب المزرعة">
-                <HeapReportList rows={heapStats.byFarm} />
-              </Section>
-
-              <Section title="الأكوام حسب المزرعة والرشاش">
-                <HeapReportList rows={heapStats.bySprinkler} />
-              </Section>
-
-              <Section title="الرشاشات حسب المزرعة">
-                <RowList rows={sprinklerStats.byFarm} />
-              </Section>
-
-              <Section title="الرشاشات حسب العامل">
-                <RowList rows={sprinklerStats.byWorker} />
-              </Section>
-
-              <Section title="الرشاشات حسب حركة الرشاش">
-                <RowList rows={sprinklerStats.byMovement} />
-              </Section>
-
-              <Section title="الرشاشات حسب نوع المحصول">
-                <RowList rows={sprinklerStats.byCropType} />
-              </Section>
-            </div>
-
-            <div className="page-card mt-4 overflow-x-auto">
-              <h3 className="p-4 pb-2 font-black">آخر الأكوام المضافة</h3>
-
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="table-th">الكوم</th>
-                    <th className="table-th">النوع</th>
-                    <th className="table-th">المزرعة</th>
-                    <th className="table-th">الرشاش</th>
-                    <th className="table-th">عدد اللبن</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {heapStats.latest.map((heap) => (
-                    <tr key={heap.id} className="border-t border-slate-100">
-                      <td className="table-td font-bold">
-                        <Link href={`/heaps/${heap.id}`}>
-                          {heap.pileName || "-"}
-                        </Link>
-                      </td>
-                      <td className="table-td">{heap.cropType || "غير معلوم"}</td>
-                      <td className="table-td">{heap.farmName || "-"}</td>
-                      <td className="table-td">{heap.sprinklerName || "-"}</td>
-                      <td className="table-td">
-                        {heap.bricksCount ? heap.bricksCount : "غير محدد"}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {heapStats.latest.length === 0 && (
+                <table className="w-full">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <td className="table-td text-center" colSpan="5">
-                        لا توجد أكوام
-                      </td>
+                      <th className="table-th">الكوم</th>
+                      <th className="table-th">النوع</th>
+                      <th className="table-th">المزرعة</th>
+                      <th className="table-th">الرشاش</th>
+                      <th className="table-th">عدد اللبن</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
 
-            <div className="page-card mt-4 overflow-x-auto">
-              <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
+                  <tbody>
+                    {heapStats.latest.map((heap) => (
+                      <tr key={heap.id} className="border-t border-slate-100">
+                        <td className="table-td font-bold">
+                          <Link href={`/heaps/${heap.id}`}>{heap.pileName || "-"}</Link>
+                        </td>
+                        <td className="table-td">{heap.cropType || "غير معلوم"}</td>
+                        <td className="table-td">{heap.farmName || "-"}</td>
+                        <td className="table-td">{heap.sprinklerName || "-"}</td>
+                        <td className="table-td">
+                          {heap.bricksCount ? heap.bricksCount : "غير محدد"}
+                        </td>
+                      </tr>
+                    ))}
 
-              <table className="w-full">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="table-th">الأصل</th>
-                    <th className="table-th">التصنيف</th>
-                    <th className="table-th">النوع</th>
-                    <th className="table-th">المكان</th>
-                    <th className="table-th">نوع المكان</th>
-                    <th className="table-th">الحالة</th>
-                  </tr>
-                </thead>
+                    {heapStats.latest.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="5">
+                          لا توجد أكوام
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-                <tbody>
-                  {assets.map((asset) => (
-                    <tr key={asset.id} className="border-t border-slate-100">
-                      <td className="table-td font-bold">
-                        <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
-                      </td>
-                      <td className="table-td">
-                        <span className="badge bg-purple-50 text-purple-700">
-                          {getAssetCategoryLabel(asset.category)}
-                        </span>
-                      </td>
-                      <td className="table-td">{getAssetTypeName(asset)}</td>
-                      <td className="table-td">{getPlaceName(asset)}</td>
-                      <td className="table-td">
-                        {getPlaceTypeLabel(asset.placeType)}
-                      </td>
-                      <td className="table-td">
-                        <Link
-                          href={`/assets?status=${asset.status}`}
-                          className={`badge ${badgeClass(asset.status)}`}
-                        >
-                          {asset.status}
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+              <div className="page-card mt-4 overflow-x-auto">
+                <h3 className="p-4 pb-2 font-black">كل الأصول للتدقيق السريع</h3>
 
-                  {assets.length === 0 && (
+                <table className="w-full">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <td className="table-td text-center" colSpan="6">
-                        لا توجد أصول
-                      </td>
+                      <th className="table-th">الأصل</th>
+                      <th className="table-th">التصنيف</th>
+                      <th className="table-th">النوع</th>
+                      <th className="table-th">المكان</th>
+                      <th className="table-th">نوع المكان</th>
+                      <th className="table-th">الحالة</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+
+                  <tbody>
+                    {paginatedAssets.map((asset) => (
+                      <tr key={asset.id} className="border-t border-slate-100">
+                        <td className="table-td font-bold">
+                          <Link href={`/assets/${asset.id}`}>{asset.name}</Link>
+                        </td>
+                        <td className="table-td">
+                          <span className="badge bg-purple-50 text-purple-700">
+                            {getAssetCategoryLabel(asset.category)}
+                          </span>
+                        </td>
+                        <td className="table-td">{getAssetTypeName(asset)}</td>
+                        <td className="table-td">{getPlaceName(asset)}</td>
+                        <td className="table-td">{getPlaceTypeLabel(asset.placeType)}</td>
+                        <td className="table-td">
+                          <Link
+                            href={`/assets?status=${asset.status}`}
+                            className={`badge ${badgeClass(asset.status)}`}
+                          >
+                            {asset.status}
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {assets.length === 0 && (
+                      <tr>
+                        <td className="table-td text-center" colSpan="6">
+                          لا توجد أصول
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {assets.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-center gap-3 border-t border-slate-100 p-4">
+                    <button
+                      disabled={assetsPage === 1}
+                      onClick={() => setAssetsPage((prev) => prev - 1)}
+                      className="btn-secondary disabled:opacity-50"
+                    >
+                      السابق
+                    </button>
+
+                    <span className="font-bold text-slate-700">
+                      صفحة {assetsPage} من {totalAssetsPages}
+                    </span>
+
+                    <button
+                      disabled={assetsPage === totalAssetsPages}
+                      onClick={() => setAssetsPage((prev) => prev + 1)}
+                      className="btn-secondary disabled:opacity-50"
+                    >
+                      التالي
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
