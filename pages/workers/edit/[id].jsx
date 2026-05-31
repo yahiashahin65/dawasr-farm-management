@@ -80,6 +80,37 @@ const updateRelatedWorkerCache = (workerId, workerName, workerPhone) => {
   );
 };
 
+const queueWorkerUpdate = (workerId, payload) => {
+  addOfflineOperation({
+    collectionName: "workers",
+    operation: "update",
+    documentId: workerId,
+    payload: {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    },
+    meta: {
+      label: "تعديل عامل",
+      name: payload.name,
+    },
+  });
+
+  addOfflineOperation({
+    collectionName: "workers",
+    operation: "update-related-worker-name",
+    documentId: workerId,
+    payload: {
+      workerId,
+      workerName: payload.name,
+      workerPhone: payload.phone,
+    },
+    meta: {
+      label: "تحديث اسم العامل في الأصول والرشاشات",
+      name: payload.name,
+    },
+  });
+};
+
 export default function EditWorker() {
   const router = useRouter();
   const { id } = router.query;
@@ -184,34 +215,7 @@ export default function EditWorker() {
       updateRelatedWorkerCache(id, payload.name, payload.phone);
 
       if (!isOnline()) {
-        addOfflineOperation({
-          collectionName: "workers",
-          operation: "update",
-          documentId: id,
-          payload: {
-            ...payload,
-            updatedAt: serverTimestamp(),
-          },
-          meta: {
-            label: "تعديل عامل",
-            name: payload.name,
-          },
-        });
-
-        addOfflineOperation({
-          collectionName: "workers",
-          operation: "update-related-worker-name",
-          documentId: id,
-          payload: {
-            workerId: id,
-            workerName: payload.name,
-            workerPhone: payload.phone,
-          },
-          meta: {
-            label: "تحديث اسم العامل في الأصول والرشاشات",
-            name: payload.name,
-          },
-        });
+        queueWorkerUpdate(id, payload);
 
         alert("تم حفظ تعديل العامل محليًا وسيتم رفعه عند عودة الاتصال");
         router.push(`/workers/${id}`);
@@ -223,21 +227,6 @@ export default function EditWorker() {
         updatedAt: serverTimestamp(),
       });
 
-      addOfflineOperation({
-        collectionName: "workers",
-        operation: "update-related-worker-name",
-        documentId: id,
-        payload: {
-          workerId: id,
-          workerName: payload.name,
-          workerPhone: payload.phone,
-        },
-        meta: {
-          label: "تحديث اسم العامل في الأصول والرشاشات",
-          name: payload.name,
-        },
-      });
-
       router.push(`/workers/${id}`);
     } catch (error) {
       console.error(error);
@@ -245,34 +234,7 @@ export default function EditWorker() {
       updateWorkerCache(id, payload);
       updateRelatedWorkerCache(id, payload.name, payload.phone);
 
-      addOfflineOperation({
-        collectionName: "workers",
-        operation: "update",
-        documentId: id,
-        payload: {
-          ...payload,
-          updatedAt: serverTimestamp(),
-        },
-        meta: {
-          label: "تعديل عامل",
-          name: payload.name,
-        },
-      });
-
-      addOfflineOperation({
-        collectionName: "workers",
-        operation: "update-related-worker-name",
-        documentId: id,
-        payload: {
-          workerId: id,
-          workerName: payload.name,
-          workerPhone: payload.phone,
-        },
-        meta: {
-          label: "تحديث اسم العامل في الأصول والرشاشات",
-          name: payload.name,
-        },
-      });
+      queueWorkerUpdate(id, payload);
 
       alert("تعذر الاتصال، تم حفظ تعديل العامل محليًا وسيتم رفعه عند عودة الاتصال");
       router.push(`/workers/${id}`);
