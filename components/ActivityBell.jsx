@@ -17,6 +17,31 @@ import {
 
 import { db } from "../lib/firebase";
 
+const SEEN_STORAGE_KEY = "seenActivityLogIds";
+
+const getSeenIds = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const value = localStorage.getItem(SEEN_STORAGE_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveSeenIds = (ids) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // ignore localStorage errors
+  }
+};
+
 const formatDate = (value) => {
   const date = value?.toDate ? value.toDate() : null;
 
@@ -61,9 +86,31 @@ const getTypeLabel = (type) => {
 export default function ActivityBell() {
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [seenIds, setSeenIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const unreadCount = useMemo(() => logs.length, [logs]);
+  useEffect(() => {
+    setSeenIds(getSeenIds());
+  }, []);
+
+  const markAsSeen = (logId) => {
+    if (!logId) return;
+
+    setSeenIds((prev) => {
+      if (prev.includes(logId)) return prev;
+
+      const next = [logId, ...prev].slice(0, 300);
+      saveSeenIds(next);
+
+      return next;
+    });
+  };
+
+  const isSeen = (logId) => seenIds.includes(logId);
+
+  const unreadCount = useMemo(() => {
+    return logs.filter((log) => !seenIds.includes(log.id)).length;
+  }, [logs, seenIds]);
 
   useEffect(() => {
     const q = query(
@@ -147,55 +194,70 @@ export default function ActivityBell() {
                   لا توجد أنشطة بعد
                 </div>
               ) : (
-                logs.map((log) => (
-                  <Link
-                    key={log.id}
-                    href={log.itemPath || "/activity-logs"}
-                    onClick={() => setOpen(false)}
-                    className="block rounded-2xl p-3 transition hover:bg-slate-50"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl text-xs ${getTypeClass(
-                          log.type
-                        )}`}
-                      >
-                        <FontAwesomeIcon
-                          icon={faCircle}
-                          className="text-[8px]"
-                        />
-                      </span>
+                logs.map((log) => {
+                  const seen = isSeen(log.id);
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-black text-slate-800">
-                            {log.title || "نشاط جديد"}
-                          </p>
+                  return (
+                    <Link
+                      key={log.id}
+                      href={log.itemPath || "/activity-logs"}
+                      onClick={() => {
+                        markAsSeen(log.id);
+                        setOpen(false);
+                      }}
+                      className={`block rounded-2xl p-3 transition hover:bg-slate-50 ${
+                        seen ? "opacity-70" : "bg-green-50/60"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl text-xs ${getTypeClass(
+                            log.type
+                          )}`}
+                        >
+                          <FontAwesomeIcon
+                            icon={faCircle}
+                            className="text-[8px]"
+                          />
+                        </span>
 
-                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">
-                            {getTypeLabel(log.type)}
-                          </span>
-                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              {!seen && (
+                                <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+                              )}
 
-                        {log.description && (
-                          <p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-500">
-                            {log.description}
-                          </p>
-                        )}
+                              <p className="truncate text-sm font-black text-slate-800">
+                                {log.title || "نشاط جديد"}
+                              </p>
+                            </div>
 
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold text-slate-400">
-                            {log.userName || "النظام"}
-                          </span>
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">
+                              {getTypeLabel(log.type)}
+                            </span>
+                          </div>
 
-                          <span className="text-[11px] font-bold text-slate-400">
-                            {formatDate(log.createdAt)}
-                          </span>
+                          {log.description && (
+                            <p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-500">
+                              {log.description}
+                            </p>
+                          )}
+
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-slate-400">
+                              {log.userName || "النظام"}
+                            </span>
+
+                            <span className="text-[11px] font-bold text-slate-400">
+                              {formatDate(log.createdAt)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Link>
-                ))
+                    </Link>
+                  );
+                })
               )}
             </div>
 
