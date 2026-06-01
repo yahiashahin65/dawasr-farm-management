@@ -7,16 +7,12 @@ import { auth } from "../lib/firebase";
 
 export default function EnableNotificationsButton() {
   const [loading, setLoading] = useState(false);
-  const [enabled, setEnabled] = useState(false);
 
-  const enableNotifications = async () => {
+  const enable = async () => {
     try {
       setLoading(true);
-
       await requestPushPermission(auth.currentUser);
-
-      setEnabled(true);
-      alert("تم تفعيل الإشعارات بنجاح");
+      alert("تم تفعيل إشعارات الجهاز بنجاح");
     } catch (error) {
       alert(error.message || "تعذر تفعيل الإشعارات");
     } finally {
@@ -27,12 +23,12 @@ export default function EnableNotificationsButton() {
   return (
     <button
       type="button"
-      onClick={enableNotifications}
-      disabled={loading || enabled}
-      className="inline-flex items-center gap-2 rounded-2xl bg-green-700 px-4 py-3 text-sm font-black text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+      onClick={enable}
+      disabled={loading}
+      className="inline-flex items-center gap-2 rounded-2xl bg-green-700 px-4 py-3 text-sm font-black text-white hover:bg-green-800 disabled:bg-slate-300"
     >
       <FontAwesomeIcon icon={faBell} />
-      {enabled ? "الإشعارات مفعلة" : loading ? "جاري التفعيل..." : "تفعيل الإشعارات"}
+      {loading ? "جاري التفعيل..." : "تفعيل إشعارات الجهاز"}
     </button>
   );
 }
