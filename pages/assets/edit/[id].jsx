@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../../lib/firebase";
+import { createSystemEvent } from "../../../lib/systemEvents";
 import { fileToFirestoreImage } from "../../../lib/imageToFirestore";
 import { addOfflineOperation, isOnline } from "../../../lib/offlineQueue";
 import {
@@ -107,29 +108,20 @@ export default function EditAsset() {
     setForm((prev) => ({
       ...prev,
       ...data,
-
-      category:
-        data.category === "material" ? "asset" : data.category || "asset",
-
+      category: data.category === "material" ? "asset" : data.category || "asset",
       assetTypeName: data.assetTypeName || "مكينة",
-
       placeType: data.placeType || data.currentPlace?.type || "farm",
-
       placeId:
         data.placeId ||
         data.currentPlace?.id ||
         data.farmId ||
         data.kubraId ||
         "",
-
       externalWorkshopName:
         data.externalWorkshopName ||
         (data.placeType === "external_workshop" ? data.placeName || "" : ""),
-
       workerIds: data.workerIds || [],
-
       status: data.status || "صالح",
-
       imageUrl: data.imageUrl || "",
     }));
   };
@@ -268,6 +260,16 @@ export default function EditAsset() {
     return fileToFirestoreImage(image);
   };
 
+  const buildSystemEvent = (payload) => ({
+    type: "update",
+    module: "assets",
+    title: "تم تعديل أصل",
+    description: payload.name || "تم تعديل أصل",
+    itemId: id,
+    itemPath: `/assets/${id}`,
+    notify: true,
+  });
+
   const submit = async (e) => {
     e.preventDefault();
 
@@ -301,9 +303,7 @@ export default function EditAsset() {
         : places.find((item) => item.id === form.placeId);
 
       const placeId = isExternalWorkshop ? "" : form.placeId;
-      const placeType = isExternalWorkshop
-        ? "external_workshop"
-        : form.placeType;
+      const placeType = isExternalWorkshop ? "external_workshop" : form.placeType;
 
       const placeName = isExternalWorkshop
         ? form.externalWorkshopName.trim()
@@ -319,54 +319,37 @@ export default function EditAsset() {
 
       const payload = {
         name: form.name.trim(),
-
         code: form.code || "",
-
         category: form.category || "asset",
-
         assetTypeId: form.assetTypeId || "",
-
         assetTypeName: type?.name || form.assetTypeName || "مكينة",
-
         status: isExternalWorkshop ? "في الورشة" : form.status,
-
         placeType,
-
         placeId,
-
         placeName,
-
         currentPlace: {
           type: placeType,
           id: placeId,
           name: placeName,
         },
-
         farmId: placeType === "farm" ? form.placeId : "",
-
         farmName: placeType === "farm" ? placeName : "",
-
         kubraId: placeType === "kubra" ? form.placeId : "",
-
         kubraName: placeType === "kubra" ? placeName : "",
-
         externalWorkshopName:
           placeType === "external_workshop" ? placeName : "",
-
         workerIds: form.workerIds,
-
         workers: selectedWorkers.map((w) => ({
           id: w.id,
           name: w.name,
           phone: w.phone || "",
         })),
-
         workerNames: selectedWorkers.map((w) => w.name).join("، "),
-
         imageUrl,
-
         notes: form.notes || "",
       };
+
+      const systemEvent = buildSystemEvent(payload);
 
       if (!isOnline()) {
         updateAssetCache(id, payload);
@@ -382,6 +365,7 @@ export default function EditAsset() {
           meta: {
             label: "تعديل أصل",
             name: payload.name,
+            systemEvent,
           },
         });
 
@@ -400,6 +384,8 @@ export default function EditAsset() {
         isOffline: false,
         syncStatus: "synced",
       });
+
+      await createSystemEvent(systemEvent);
 
       router.push("/assets");
     } catch (error) {
@@ -438,6 +424,8 @@ export default function EditAsset() {
         notes: form.notes || "",
       };
 
+      const systemEvent = buildSystemEvent(fallbackPayload);
+
       updateAssetCache(id, fallbackPayload);
 
       addOfflineOperation({
@@ -451,6 +439,7 @@ export default function EditAsset() {
         meta: {
           label: "تعديل أصل",
           name: fallbackPayload.name,
+          systemEvent,
         },
       });
 
@@ -549,13 +538,9 @@ export default function EditAsset() {
 
                   setForm({
                     ...form,
-
                     placeType: nextPlaceType,
-
                     placeId: "",
-
                     externalWorkshopName: "",
-
                     status:
                       nextPlaceType === "external_workshop"
                         ? "في الورشة"
@@ -577,13 +562,9 @@ export default function EditAsset() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-
                       externalWorkshopName: e.target.value,
-
                       placeType: "external_workshop",
-
                       placeId: "",
-
                       status: "في الورشة",
                     })
                   }
