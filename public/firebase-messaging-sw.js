@@ -15,43 +15,22 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || "مزارع السنبلة";
 
-  const options = {
+  self.registration.showNotification(title, {
     body: payload.notification?.body || "",
     icon: "/icons/icon-192x192.png",
     badge: "/icons/icon-192x192.png",
     data: {
       url: payload.data?.url || "/activity-logs",
     },
-  };
-
-  self.registration.showNotification(title, options);
+  });
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const url = event.notification?.data?.url || "/activity-logs";
+  const urlToOpen = event.notification?.data?.url || "/activity-logs";
 
   event.waitUntil(
-    self.clients
-      .matchAll({
-        type: "window",
-        includeUncontrolled: true,
-      })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if ("focus" in client) {
-            client.focus();
-            client.navigate(url);
-            return;
-          }
-        }
-
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(url);
-        }
-
-        return null;
-      })
+    self.clients.openWindow(urlToOpen)
   );
 });
