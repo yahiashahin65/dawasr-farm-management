@@ -1,11 +1,13 @@
 import admin from "firebase-admin";
 
+const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
       clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      privateKey,
     }),
   });
 }
@@ -13,6 +15,13 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
+  if (req.method === "GET") {
+    return res.status(200).json({
+      ok: true,
+      message: "send-push API is running. Use POST to send notifications.",
+    });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method not allowed" });
   }
@@ -60,8 +69,9 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Send push error:", error);
+
     return res.status(500).json({
-      message: "Failed to send push notification",
+      message: error.message || "Failed to send push notification",
     });
   }
 }
