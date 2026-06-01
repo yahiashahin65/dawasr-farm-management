@@ -9,7 +9,8 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-import { db } from "../../lib/firebase";
+import { auth, db } from "../../lib/firebase";
+import { requestPushPermission } from "../../lib/pushNotifications";
 import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 import {
   getCachedCollection,
@@ -50,13 +51,9 @@ const createLocalId = () =>
 const serializeData = (value) => {
   if (!value) return value;
 
-  if (value?.toDate) {
-    return value.toDate().toISOString();
-  }
+  if (value?.toDate) return value.toDate().toISOString();
 
-  if (Array.isArray(value)) {
-    return value.map(serializeData);
-  }
+  if (Array.isArray(value)) return value.map(serializeData);
 
   if (typeof value === "object") {
     return Object.keys(value).reduce((acc, key) => {
@@ -109,6 +106,7 @@ export default function SettingsPage() {
   const [realtimeError, setRealtimeError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exportingBackup, setExportingBackup] = useState(false);
+  const [enablingNotifications, setEnablingNotifications] = useState(false);
 
   const [form, setForm] = useState({
     type: "sprinklerMovement",
@@ -143,6 +141,21 @@ export default function SettingsPage() {
 
   const updateField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const enableNotifications = async () => {
+    try {
+      setEnablingNotifications(true);
+
+      await requestPushPermission(auth.currentUser);
+
+      alert("تم تفعيل إشعارات الجهاز بنجاح");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "تعذر تفعيل إشعارات الجهاز");
+    } finally {
+      setEnablingNotifications(false);
+    }
   };
 
   const exportBackup = async () => {
@@ -314,88 +327,6 @@ export default function SettingsPage() {
       });
 
       alert("تعذر الاتصال، تم حفظ الإعداد محليًا وسيتم رفعه عند عودة الاتصال");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const seedDefaults = async () => {
-    if (!canManage || saving) return;
-
-    const allItems = [];
-
-    Object.entries(DEFAULT_SYSTEM_SETTINGS).forEach(([type, values]) => {
-      values.forEach((name) => {
-        allItems.push({ type, name });
-      });
-    });
-
-    setSaving(true);
-
-    try {
-      let createdCount = 0;
-
-      for (const item of allItems) {
-        const exists = items.some(
-          (x) =>
-            x.type === item.type &&
-            String(x.name || "").trim() === String(item.name || "").trim()
-        );
-
-        if (exists) continue;
-
-        const localId = createLocalId();
-
-        const payload = {
-          type: item.type,
-          name: item.name,
-          notes: "",
-          isActive: true,
-        };
-
-        if (!isOnline()) {
-          addSettingToCache({
-            id: localId,
-            ...payload,
-            isOffline: true,
-            syncStatus: "pending",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          addOfflineOperation({
-            collectionName: "systemSettings",
-            operation: "create",
-            documentId: localId,
-            payload: {
-              ...payload,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            },
-            meta: {
-              label: "إضافة قيمة افتراضية",
-              name: payload.name,
-            },
-          });
-        } else {
-          await addDoc(collection(db, "systemSettings"), {
-            ...payload,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
-
-        createdCount += 1;
-      }
-
-      alert(
-        createdCount
-          ? `تم إنشاء ${createdCount} قيمة افتراضية`
-          : "كل القيم الافتراضية موجودة بالفعل"
-      );
-    } catch (error) {
-      console.error(error);
-      alert("حدث خطأ أثناء إنشاء القيم الافتراضية");
     } finally {
       setSaving(false);
     }
@@ -574,20 +505,31 @@ export default function SettingsPage() {
                     {saving ? "جاري الحفظ..." : "حفظ الإعداد"}
                   </button>
 
-                  
-
                   {canManage && (
-  <button
-    type="button"
-    disabled={exportingBackup}
-    onClick={exportBackup}
-    className="btn-secondary w-full disabled:opacity-50"
-  >
-    {exportingBackup
-      ? "جاري تصدير النسخة..."
-      : "تصدير نسخة احتياطية JSON"}
-  </button>
-)}
+                    <>
+                      <button
+                        type="button"
+                        disabled={exportingBackup}
+                        onClick={exportBackup}
+                        className="btn-secondary w-full disabled:opacity-50"
+                      >
+                        {exportingBackup
+                          ? "جاري تصدير النسخة..."
+                          : "تصدير نسخة احتياطية JSON"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={enablingNotifications}
+                        onClick={enableNotifications}
+                        className="btn-primary w-full disabled:opacity-50"
+                      >
+                        {enablingNotifications
+                          ? "جاري التفعيل..."
+                          : "تفعيل إشعارات الجهاز"}
+                      </button>
+                    </>
+                  )}
                 </form>
               </div>
 
