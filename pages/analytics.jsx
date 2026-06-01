@@ -333,6 +333,7 @@ export default function Analytics() {
         cacheKey: "cache:assets",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setAssets(data);
           markLoaded("assets");
