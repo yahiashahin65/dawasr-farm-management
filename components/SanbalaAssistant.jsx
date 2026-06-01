@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -17,6 +17,8 @@ import {
   faChartLine,
 } from "@fortawesome/free-solid-svg-icons";
 
+import { db } from "../lib/firebase";
+import { subscribeCachedCollection } from "../lib/realtimeCache";
 import { askSmartAssistant } from "../lib/smartAssistant";
 
 const sections = [
@@ -114,10 +116,23 @@ const sections = [
   },
 ];
 
+const initialAssistantData = {
+  assets: [],
+  workers: [],
+  engineers: [],
+  farms: [],
+  kubras: [],
+  sprinklers: [],
+  heaps: [],
+  movements: [],
+};
+
 export default function SanbalaAssistant() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [activeSection, setActiveSection] = useState(null);
+  const [assistantData, setAssistantData] = useState(initialAssistantData);
+
   const [chat, setChat] = useState([
     {
       from: "assistant",
@@ -128,13 +143,80 @@ export default function SanbalaAssistant() {
     },
   ]);
 
+  useEffect(() => {
+    const collections = [
+      {
+        collectionName: "assets",
+        cacheKey: "cache:assets",
+        stateKey: "assets",
+      },
+      {
+        collectionName: "workers",
+        cacheKey: "cache:workers",
+        stateKey: "workers",
+      },
+      {
+        collectionName: "engineers",
+        cacheKey: "cache:engineers",
+        stateKey: "engineers",
+      },
+      {
+        collectionName: "farms",
+        cacheKey: "cache:farms",
+        stateKey: "farms",
+      },
+      {
+        collectionName: "kubras",
+        cacheKey: "cache:kubras",
+        stateKey: "kubras",
+      },
+      {
+        collectionName: "sprinklers",
+        cacheKey: "cache:sprinklers",
+        stateKey: "sprinklers",
+      },
+      {
+        collectionName: "heaps",
+        cacheKey: "cache:heaps",
+        stateKey: "heaps",
+      },
+      {
+        collectionName: "assetMovements",
+        cacheKey: "cache:assetMovements",
+        stateKey: "movements",
+      },
+    ];
+
+    const unsubscribes = collections.map(
+      ({ collectionName, cacheKey, stateKey }) =>
+        subscribeCachedCollection({
+          db,
+          collectionName,
+          cacheKey,
+          onData: (data) => {
+            setAssistantData((prev) => ({
+              ...prev,
+              [stateKey]: Array.isArray(data) ? data : [],
+            }));
+          },
+          onError: (error) => {
+            console.error(`Assistant ${collectionName} sync error:`, error);
+          },
+        })
+    );
+
+    return () => {
+      unsubscribes.forEach((unsubscribe) => unsubscribe?.());
+    };
+  }, []);
+
   const selectedSection = sections.find((item) => item.id === activeSection);
 
   const ask = (text) => {
     const value = String(text || message).trim();
     if (!value) return;
 
-    const response = askSmartAssistant(value);
+    const response = askSmartAssistant(value, assistantData);
 
     setChat((prev) => [
       ...prev,
@@ -280,7 +362,7 @@ export default function SanbalaAssistant() {
                         <div className="mt-3 space-y-2">
                           {item.items.map((result) => (
                             <Link
-                              key={result.href + result.title}
+                              key={`${result.href}-${result.title}`}
                               href={result.href}
                               onClick={() => setOpen(false)}
                               className="block rounded-2xl border border-slate-100 bg-slate-50 p-3 transition hover:bg-green-50"
