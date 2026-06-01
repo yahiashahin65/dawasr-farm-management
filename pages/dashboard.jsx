@@ -148,6 +148,7 @@ export default function Dashboard() {
         cacheKey: "cache:assets",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setAssets(data);
           markLoaded("assets");
