@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { deleteDoc, doc } from "firebase/firestore";
-
+import { createSystemEvent } from "../../lib/systemEvents";
 import { db } from "../../lib/firebase";
 import { calculateAssetsStats } from "../../lib/assetsStats";
 import {
@@ -277,6 +277,14 @@ export default function Assets() {
 
     try {
       await deleteDoc(doc(db, "assets", id));
+      await createSystemEvent({
+        type: "delete",
+        module: "assets",
+        title: "تم حذف أصل",
+        description: target?.name || "تم حذف أصل",
+        itemId: id,
+        itemPath: "/assets",
+        notify: true,
     } catch (error) {
       console.error(error);
 
@@ -288,6 +296,14 @@ export default function Assets() {
         meta: {
           label: "حذف أصل",
           name: target?.name || "",
+          systemEvent: {
+          type: "delete",
+          module: "assets",
+          title: "تم حذف أصل",
+          description: target?.name || "",
+          itemPath: "/assets",
+          notify: true,
+    },
         },
       });
 
