@@ -87,10 +87,20 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({
-      success: true,
-      successCount: response.successCount,
-      failureCount: response.failureCount,
-    });
+  success: true,
+  tokensCount: tokens.length,
+  successCount: response.successCount,
+  failureCount: response.failureCount,
+  responses: response.responses.map((item) => ({
+    success: item.success,
+    error: item.error
+      ? {
+          code: item.error.code,
+          message: item.error.message,
+        }
+      : null,
+  })),
+});
   } catch (error) {
     return res.status(500).json({
       ok: false,
