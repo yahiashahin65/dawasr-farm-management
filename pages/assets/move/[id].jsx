@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../../lib/firebase";
+import { createSystemEvent } from "../../../lib/systemEvents";
 import { addOfflineOperation, isOnline } from "../../../lib/offlineQueue";
 import {
   getCachedCollection,
@@ -216,6 +217,13 @@ export default function MoveAsset() {
         ? form.externalWorkshopName.trim()
         : place?.name || "";
 
+      const fromPlaceName =
+        asset?.placeName ||
+        asset?.farmName ||
+        asset?.kubraName ||
+        asset?.externalWorkshopName ||
+        "";
+
       const newStatus = isExternalWorkshop
         ? "في الورشة"
         : asset?.status === "في الورشة"
@@ -255,12 +263,7 @@ export default function MoveAsset() {
 
         fromPlaceType: asset?.placeType || "",
         fromPlaceId: asset?.placeId || "",
-        fromPlaceName:
-          asset?.placeName ||
-          asset?.farmName ||
-          asset?.kubraName ||
-          asset?.externalWorkshopName ||
-          "",
+        fromPlaceName,
 
         toPlaceType: form.placeType,
         toPlaceId: placeId,
@@ -272,6 +275,18 @@ export default function MoveAsset() {
         reason:
           form.reason ||
           (isExternalWorkshop ? "إرسال للورشة" : "نقل أصل"),
+      };
+
+      const systemEvent = {
+        type: "move",
+        module: "assets",
+        title: isExternalWorkshop ? "تم إرسال أصل إلى الورشة" : "تم نقل أصل",
+        description: `${asset?.name || "أصل"} من ${
+          fromPlaceName || "مكان غير محدد"
+        } إلى ${placeName || "مكان غير محدد"}`,
+        itemId: id,
+        itemPath: `/assets/${id}`,
+        notify: true,
       };
 
       updateAssetCache(id, assetPayload);
@@ -297,6 +312,7 @@ export default function MoveAsset() {
           meta: {
             label: "نقل أصل",
             name: asset?.name || "",
+            systemEvent,
           },
         });
 
@@ -330,6 +346,8 @@ export default function MoveAsset() {
         movedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
+
+      await createSystemEvent(systemEvent);
 
       router.push(`/assets/${id}`);
     } catch (error) {
@@ -443,4 +461,4 @@ export default function MoveAsset() {
       </Layout>
     </ProtectedRoute>
   );
-}
+        }
