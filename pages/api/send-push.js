@@ -1,32 +1,56 @@
 import admin from "firebase-admin";
 
-const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const getPrivateKey = () => {
+  const key = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
 
-if (!admin.apps.length) {
-  admin.initializeApp({
+  if (!key) return "";
+
+  return key.includes("\\n") ? key.replace(/\\n/g, "\n") : key;
+};
+
+const getAdminApp = () => {
+  if (admin.apps.length) return admin.app();
+
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+  const privateKey = getPrivateKey();
+
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error("Missing Firebase Admin environment variables");
+  }
+
+  return admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      projectId,
+      clientEmail,
       privateKey,
     }),
   });
-}
-
-const db = admin.firestore();
+};
 
 export default async function handler(req, res) {
-  if (req.method === "GET") {
-    return res.status(200).json({
-      ok: true,
-      message: "send-push API is running. Use POST to send notifications.",
-    });
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
-
   try {
+    if (req.method === "GET") {
+      return res.status(200).json({
+        ok: true,
+        message: "send-push API is running",
+        env: {
+          hasProjectId: Boolean(process.env.FIREBASE_ADMIN_PROJECT_ID),
+          hasClientEmail: Boolean(process.env.FIREBASE_ADMIN_CLIENT_EMAIL),
+          hasPrivateKey: Boolean(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
+          projectId: process.env.FIREBASE_ADMIN_PROJECT_ID || null,
+        },
+      });
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ message: "Method not allowed" });
+    }
+
+    getAdminApp();
+
+    const db = admin.firestore();
+
     const { title, body, url = "/activity-logs" } = req.body || {};
 
     if (!title) {
@@ -68,10 +92,10 @@ export default async function handler(req, res) {
       failureCount: response.failureCount,
     });
   } catch (error) {
-    console.error("Send push error:", error);
-
     return res.status(500).json({
-      message: error.message || "Failed to send push notification",
+      ok: false,
+      message: error.message || "Unknown server error",
+      code: error.code || null,
     });
   }
 }
