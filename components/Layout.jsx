@@ -8,6 +8,7 @@ import { startOfflineSyncListener } from "../lib/syncOfflineQueue";
 import { bootstrapOfflineCache } from "../lib/bootstrapCache";
 import useUserRole from "../hooks/useUserRole";
 import SanbalaAssistant from "./SanbalaAssistant";
+import ActivityBell from "./ActivityBell";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -29,12 +30,14 @@ import {
   faGear,
   faWifi,
   faCloudArrowUp,
+  faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
 
 const links = [
   { href: "/dashboard", label: "الرئيسية", icon: faGaugeHigh },
   { href: "/reports", label: "التقارير", icon: faChartLine },
   { href: "/analytics", label: "التحليلات", icon: faChartPie },
+  { href: "/activity-logs", label: "سجل النشاط", icon: faClockRotateLeft },
   { href: "/assets", label: "الأصول والعهد", icon: faTractor },
   { href: "/assets/movements", label: "سجل الحركات", icon: faRightLeft },
   { href: "/heaps", label: "الأكوام", icon: faSeedling },
@@ -222,6 +225,8 @@ export default function Layout({ children, title = "مزارع السنبلة" }
             </div>
 
             <div className="flex items-center gap-2">
+              <ActivityBell />
+
               <ConnectionStatus />
 
               <button
