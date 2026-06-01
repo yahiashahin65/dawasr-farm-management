@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../../lib/firebase";
+import { createSystemEvent } from "../../lib/systemEvents";
 import { fileToFirestoreImage } from "../../lib/imageToFirestore";
 import { addOfflineOperation, isOnline } from "../../lib/offlineQueue";
 import {
@@ -183,7 +184,7 @@ export default function AddAsset() {
 
     setLoading(true);
 
-    try {
+    const buildPayloads = async ({ forceNoImage = false } = {}) => {
       const place = isExternalWorkshop
         ? null
         : places.find((item) => item.id === form.placeId);
@@ -204,10 +205,7 @@ export default function AddAsset() {
         form.workerIds.includes(worker.id)
       );
 
-      const assetId = createLocalId();
-      const movementId = createLocalId();
-
-      const imageUrl = isOnline() ? await uploadImage() : "";
+      const imageUrl = forceNoImage || !isOnline() ? "" : await uploadImage();
 
       const assetPayload = {
         name: form.name.trim(),
@@ -254,7 +252,6 @@ export default function AddAsset() {
       };
 
       const movementPayload = {
-        assetId,
         assetName: form.name.trim(),
 
         movementType: "created",
@@ -273,6 +270,28 @@ export default function AddAsset() {
         notes: form.notes.trim(),
       };
 
+      return {
+        assetPayload,
+        movementPayload,
+      };
+    };
+
+    try {
+      const assetId = createLocalId();
+      const movementId = createLocalId();
+
+      const { assetPayload, movementPayload } = await buildPayloads();
+
+      const systemEvent = {
+        type: "create",
+        module: "assets",
+        title: "تم إضافة أصل جديد",
+        description: assetPayload.name,
+        itemId: assetId,
+        itemPath: `/assets/${assetId}`,
+        notify: true,
+      };
+
       if (!isOnline()) {
         addAssetToCache({
           id: assetId,
@@ -286,6 +305,7 @@ export default function AddAsset() {
         addMovementToCache({
           id: movementId,
           ...movementPayload,
+          assetId,
           isOffline: true,
           syncStatus: "pending",
           movedAt: new Date().toISOString(),
@@ -304,6 +324,7 @@ export default function AddAsset() {
           meta: {
             label: "إضافة أصل",
             name: assetPayload.name,
+            systemEvent,
           },
         });
 
@@ -313,6 +334,7 @@ export default function AddAsset() {
           documentId: movementId,
           payload: {
             ...movementPayload,
+            assetId,
             movedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
           },
@@ -347,83 +369,36 @@ export default function AddAsset() {
 
       await batch.commit();
 
+      await createSystemEvent({
+        ...systemEvent,
+        itemId: assetRef.id,
+        itemPath: `/assets/${assetRef.id}`,
+      });
+
       router.push("/assets");
     } catch (error) {
       console.error(error);
 
-      const place = isExternalWorkshop
-        ? null
-        : places.find((item) => item.id === form.placeId);
-
-      const placeId = isExternalWorkshop ? "" : form.placeId;
-
-      const placeType = isExternalWorkshop
-        ? "external_workshop"
-        : form.placeType;
-
-      const placeName = isExternalWorkshop
-        ? form.externalWorkshopName.trim()
-        : place?.name || "";
-
-      const type = types.find((item) => item.id === form.assetTypeId);
-
-      const selectedWorkers = workers.filter((worker) =>
-        form.workerIds.includes(worker.id)
-      );
-
       const assetId = createLocalId();
       const movementId = createLocalId();
 
-      const fallbackAssetPayload = {
-        name: form.name.trim(),
-        code: form.code.trim(),
-        category: form.category,
-        assetTypeId: form.assetTypeId,
-        assetTypeName: type?.name || "",
-        status: isExternalWorkshop ? "في الورشة" : form.status,
-        placeType,
-        placeId,
-        placeName,
-        currentPlace: {
-          type: placeType,
-          id: placeId,
-          name: placeName,
-        },
-        farmId: placeType === "farm" ? form.placeId : "",
-        farmName: placeType === "farm" ? placeName : "",
-        kubraId: placeType === "kubra" ? form.placeId : "",
-        kubraName: placeType === "kubra" ? placeName : "",
-        externalWorkshopName:
-          placeType === "external_workshop" ? placeName : "",
-        workerIds: form.workerIds,
-        workers: selectedWorkers.map((worker) => ({
-          id: worker.id,
-          name: worker.name,
-          phone: worker.phone || "",
-        })),
-        workerNames: selectedWorkers.map((worker) => worker.name).join("، "),
-        imageUrl: "",
-        notes: form.notes.trim(),
-      };
+      const { assetPayload, movementPayload } = await buildPayloads({
+        forceNoImage: true,
+      });
 
-      const fallbackMovementPayload = {
-        assetId,
-        assetName: form.name.trim(),
-        movementType: "created",
-        fromPlaceType: "",
-        fromPlaceName: "",
-        toPlaceType: placeType,
-        toPlaceId: placeId,
-        toPlaceName: placeName,
-        status: fallbackAssetPayload.status,
-        category: form.category,
-        reason: "تسجيل أول مكان للأصل",
-        notes: form.notes.trim(),
+      const systemEvent = {
+        type: "create",
+        module: "assets",
+        title: "تم إضافة أصل جديد",
+        description: assetPayload.name,
+        itemId: assetId,
+        itemPath: `/assets/${assetId}`,
+        notify: true,
       };
 
       addAssetToCache({
         id: assetId,
-        ...fallbackAssetPayload,
+        ...assetPayload,
         isOffline: true,
         syncStatus: "pending",
         createdAt: new Date().toISOString(),
@@ -432,7 +407,8 @@ export default function AddAsset() {
 
       addMovementToCache({
         id: movementId,
-        ...fallbackMovementPayload,
+        ...movementPayload,
+        assetId,
         isOffline: true,
         syncStatus: "pending",
         movedAt: new Date().toISOString(),
@@ -444,13 +420,14 @@ export default function AddAsset() {
         operation: "create",
         documentId: assetId,
         payload: {
-          ...fallbackAssetPayload,
+          ...assetPayload,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
         meta: {
           label: "إضافة أصل",
-          name: fallbackAssetPayload.name,
+          name: assetPayload.name,
+          systemEvent,
         },
       });
 
@@ -459,13 +436,14 @@ export default function AddAsset() {
         operation: "create",
         documentId: movementId,
         payload: {
-          ...fallbackMovementPayload,
+          ...movementPayload,
+          assetId,
           movedAt: serverTimestamp(),
           createdAt: serverTimestamp(),
         },
         meta: {
           label: "تسجيل أول حركة للأصل",
-          name: fallbackAssetPayload.name,
+          name: assetPayload.name,
         },
       });
 
