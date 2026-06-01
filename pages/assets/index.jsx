@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { deleteDoc, doc } from "firebase/firestore";
-import { createSystemEvent } from "../../lib/systemEvents";
+
 import { db } from "../../lib/firebase";
+import { createSystemEvent } from "../../lib/systemEvents";
 import { calculateAssetsStats } from "../../lib/assetsStats";
 import {
   getCachedCollection,
@@ -18,7 +19,6 @@ import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-
 import {
   faPlus,
   faPen,
@@ -251,6 +251,17 @@ export default function Assets() {
     if (!confirm("هل تريد حذف الأصل؟")) return;
 
     const target = allItems.find((item) => item.id === id);
+    const assetName = target?.name || target?.assetName || target?.code || "أصل";
+
+    const systemEvent = {
+      type: "delete",
+      module: "assets",
+      title: "تم حذف أصل",
+      description: assetName,
+      itemId: id,
+      itemPath: "/assets",
+      notify: true,
+    };
 
     removeAssetFromCache(id);
     setAllItems((prev) => prev.filter((item) => item.id !== id));
@@ -267,7 +278,8 @@ export default function Assets() {
         payload: {},
         meta: {
           label: "حذف أصل",
-          name: target?.name || "",
+          name: assetName,
+          systemEvent,
         },
       });
 
@@ -277,14 +289,9 @@ export default function Assets() {
 
     try {
       await deleteDoc(doc(db, "assets", id));
-      await createSystemEvent({
-        type: "delete",
-        module: "assets",
-        title: "تم حذف أصل",
-        description: target?.name || "تم حذف أصل",
-        itemId: id,
-        itemPath: "/assets",
-        notify: true,
+      await createSystemEvent(systemEvent);
+
+      alert("تم حذف الأصل بنجاح");
     } catch (error) {
       console.error(error);
 
@@ -295,15 +302,8 @@ export default function Assets() {
         payload: {},
         meta: {
           label: "حذف أصل",
-          name: target?.name || "",
-          systemEvent: {
-          type: "delete",
-          module: "assets",
-          title: "تم حذف أصل",
-          description: target?.name || "",
-          itemPath: "/assets",
-          notify: true,
-    },
+          name: assetName,
+          systemEvent,
         },
       });
 
@@ -599,7 +599,9 @@ export default function Assets() {
                                   }`
                                 : asset.placeType === "external_workshop"
                                 ? `/assets?placeType=external_workshop`
-                                : `/assets?farmId=${asset.farmId || asset.placeId}`
+                                : `/assets?farmId=${
+                                    asset.farmId || asset.placeId
+                                  }`
                             }
                           >
                             <b>{getPlaceName(asset)}</b>
