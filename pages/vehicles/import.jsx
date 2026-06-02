@@ -95,9 +95,14 @@ const findFarm = (farmName, farms) => {
 
   if (!cleanFarmName) return null;
 
-  return (
-    farms.find((farm) => normalizeText(farm.name) === cleanFarmName) || null
-  );
+  return farms.find((farm) => normalizeText(farm.name) === cleanFarmName) || null;
+};
+
+const getPersonTypeLabel = (type) => {
+  if (type === "worker") return "عامل";
+  if (type === "engineer") return "مهندس";
+  if (type === "accountant") return "محاسب";
+  return "-";
 };
 
 export default function ImportVehiclesPage() {
@@ -288,10 +293,10 @@ export default function ImportVehiclesPage() {
   return (
     <ProtectedRoute>
       <Layout title="استيراد السيارات من Excel">
-        <div className="page-card p-5">
+        <div className="page-card p-4 sm:p-5">
           <h2 className="mb-2 text-xl font-black">استيراد بيانات السيارات</h2>
 
-          <p className="mb-4 text-sm font-bold text-slate-500">
+          <p className="mb-4 text-sm font-bold leading-7 text-slate-500">
             ارفع ملف Excel وسيتم قراءة السيارات وربط الراكب لو موجود في العمال
             أو المهندسين أو المحاسبين.
           </p>
@@ -304,33 +309,126 @@ export default function ImportVehiclesPage() {
           />
 
           {message && (
-            <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold leading-7 text-slate-700">
               {message}
             </div>
           )}
 
           {validRows.length > 0 && (
             <>
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <h3 className="font-black">معاينة البيانات</h3>
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="font-black">معاينة البيانات</h3>
+                  <p className="mt-1 text-sm font-bold text-slate-500">
+                    عدد السيارات الجاهزة للاستيراد: {validRows.length}
+                  </p>
+                </div>
 
                 <button
                   type="button"
                   onClick={importVehicles}
                   disabled={importing}
-                  className="btn-primary"
+                  className="btn-primary w-full sm:w-auto"
                 >
                   {importing ? "جاري الاستيراد..." : "استيراد السيارات"}
                 </button>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 grid gap-3 md:hidden">
+                {validRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900">
+                          {row.name || "سيارة بدون اسم"}
+                        </h4>
+
+                        <p className="mt-1 text-xs font-bold text-slate-400">
+                          تسلسل: {row.serial || index + 1}
+                        </p>
+                      </div>
+
+                      <span className="badge bg-green-50 text-green-700">
+                        صالح
+                      </span>
+                    </div>
+
+                    <div className="grid gap-2 text-sm">
+                      <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                        <span className="font-bold text-slate-500">اللوحة</span>
+                        <span className="font-black text-slate-800">
+                          {row.plateLetters || "-"} /{" "}
+                          {row.plateNumbers || "-"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                        <span className="font-bold text-slate-500">المكان</span>
+                        <span className="font-black text-slate-800">
+                          {row.farmName || "-"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                        <span className="font-bold text-slate-500">الراكب</span>
+                        <span className="font-black text-slate-800">
+                          {row.assignedToName || "بدون راكب"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                        <span className="font-bold text-slate-500">النوع</span>
+                        <span className="font-black text-slate-800">
+                          {getPersonTypeLabel(row.assignedToType)}
+                        </span>
+                      </div>
+
+                      {row.nationality && (
+                        <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                          <span className="font-bold text-slate-500">
+                            الجنسية
+                          </span>
+                          <span className="font-black text-slate-800">
+                            {row.nationality}
+                          </span>
+                        </div>
+                      )}
+
+                      {row.phone && (
+                        <div className="flex justify-between gap-3 rounded-2xl bg-slate-50 p-3">
+                          <span className="font-bold text-slate-500">
+                            الجوال
+                          </span>
+                          <span className="font-black text-slate-800">
+                            {row.phone}
+                          </span>
+                        </div>
+                      )}
+
+                      {row.technicalStatus && (
+                        <div className="rounded-2xl bg-amber-50 p-3">
+                          <span className="mb-1 block font-bold text-amber-700">
+                            الحالة الفنية
+                          </span>
+                          <p className="font-bold text-amber-800">
+                            {row.technicalStatus}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 hidden overflow-x-auto md:block">
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="table-th">السيارة</th>
-                      <th className="table-th">الحروف</th>
-                      <th className="table-th">الأرقام</th>
+                      <th className="table-th">اللوحة</th>
                       <th className="table-th">المكان</th>
                       <th className="table-th">الراكب</th>
                       <th className="table-th">النوع</th>
@@ -349,37 +447,21 @@ export default function ImportVehiclesPage() {
                         </td>
 
                         <td className="table-td">
-                          {row.plateLetters || "-"}
+                          <span className="badge bg-slate-100 text-slate-700">
+                            {row.plateLetters || "-"} /{" "}
+                            {row.plateNumbers || "-"}
+                          </span>
                         </td>
 
-                        <td className="table-td">
-                          {row.plateNumbers || "-"}
-                        </td>
-
-                        <td className="table-td">
-                          {row.farmName || "-"}
-                        </td>
-
+                        <td className="table-td">{row.farmName || "-"}</td>
                         <td className="table-td">
                           {row.assignedToName || "-"}
                         </td>
-
                         <td className="table-td">
-                          {row.assignedToType === "worker"
-                            ? "عامل"
-                            : row.assignedToType === "engineer"
-                            ? "مهندس"
-                            : row.assignedToType === "accountant"
-                            ? "محاسب"
-                            : "-"}
+                          {getPersonTypeLabel(row.assignedToType)}
                         </td>
-
-                        <td className="table-td">
-                          {row.nationality || "-"}
-                        </td>
-
+                        <td className="table-td">{row.nationality || "-"}</td>
                         <td className="table-td">{row.phone || "-"}</td>
-
                         <td className="table-td">
                           {row.technicalStatus || "-"}
                         </td>
@@ -400,4 +482,4 @@ export default function ImportVehiclesPage() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+}
