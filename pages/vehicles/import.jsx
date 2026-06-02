@@ -17,6 +17,8 @@ const normalizeText = (value) =>
   String(value || "")
     .replace(/\s+/g, " ")
     .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
     .trim();
 
 const cleanPersonName = (name) =>
@@ -143,6 +145,7 @@ export default function ImportVehiclesPage() {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
       const data = XLSX.utils.sheet_to_json(sheet, {
         header: 1,
         defval: "",
@@ -152,9 +155,9 @@ export default function ImportVehiclesPage() {
         const values = row.map((value) => normalizeText(value));
 
         return (
-          values.includes("اسم المعدة") &&
-          values.includes("نمر السيارة") &&
-          values.includes("مكان المعدة") &&
+          values.includes("اسم المعده") &&
+          values.includes("نمر السياره") &&
+          values.includes("مكان المعده") &&
           values.includes("اسم العامل")
         );
       });
@@ -168,7 +171,8 @@ export default function ImportVehiclesPage() {
 
       const headerRow = data[headerIndex].map((value) => normalizeText(value));
 
-      const getIndex = (label) => headerRow.findIndex((item) => item === label);
+      const getIndex = (label) =>
+        headerRow.findIndex((item) => item === normalizeText(label));
 
       const nameIndex = getIndex("اسم المعدة");
       const plateIndex = getIndex("نمر السيارة");
@@ -340,13 +344,26 @@ export default function ImportVehiclesPage() {
                   <tbody>
                     {validRows.map((row, index) => (
                       <tr key={index} className="border-t border-slate-100">
-                        <td className="table-td font-bold">{row.name || "-"}</td>
-                        <td className="table-td">{row.plateLetters || "-"}</td>
-                        <td className="table-td">{row.plateNumbers || "-"}</td>
-                        <td className="table-td">{row.farmName || "-"}</td>
+                        <td className="table-td font-bold">
+                          {row.name || "-"}
+                        </td>
+
+                        <td className="table-td">
+                          {row.plateLetters || "-"}
+                        </td>
+
+                        <td className="table-td">
+                          {row.plateNumbers || "-"}
+                        </td>
+
+                        <td className="table-td">
+                          {row.farmName || "-"}
+                        </td>
+
                         <td className="table-td">
                           {row.assignedToName || "-"}
                         </td>
+
                         <td className="table-td">
                           {row.assignedToType === "worker"
                             ? "عامل"
@@ -356,11 +373,17 @@ export default function ImportVehiclesPage() {
                             ? "محاسب"
                             : "-"}
                         </td>
-                        <td className="table-td">{row.nationality || "-"}</td>
+
+                        <td className="table-td">
+                          {row.nationality || "-"}
+                        </td>
+
                         <td className="table-td">{row.phone || "-"}</td>
+
                         <td className="table-td">
                           {row.technicalStatus || "-"}
                         </td>
+
                         <td className="table-td">
                           <span className="badge bg-green-50 text-green-700">
                             صالح
@@ -377,4 +400,4 @@ export default function ImportVehiclesPage() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
