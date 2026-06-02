@@ -164,6 +164,7 @@ export default function Dashboard() {
         cacheKey: "cache:workers",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setWorkers(normalizeList(data));
           markLoaded("workers");
@@ -179,6 +180,7 @@ export default function Dashboard() {
         cacheKey: "cache:farms",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setFarms(normalizeList(data));
           markLoaded("farms");
@@ -194,6 +196,7 @@ export default function Dashboard() {
         cacheKey: "cache:engineers",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setEngineers(normalizeList(data));
           markLoaded("engineers");
@@ -209,6 +212,7 @@ export default function Dashboard() {
         cacheKey: "cache:kubras",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setKubras(normalizeList(data));
           markLoaded("kubras");
@@ -224,6 +228,7 @@ export default function Dashboard() {
         cacheKey: "cache:assetTypes",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setTypes(normalizeList(data));
           markLoaded("types");
@@ -239,6 +244,7 @@ export default function Dashboard() {
         cacheKey: "cache:heaps",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setHeaps(data);
           markLoaded("heaps");
@@ -254,6 +260,7 @@ export default function Dashboard() {
         cacheKey: "cache:sprinklers",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setSprinklers(data);
           markLoaded("sprinklers");
@@ -269,6 +276,7 @@ export default function Dashboard() {
         cacheKey: "cache:assetMovements",
         orderField: "createdAt",
         orderDirection: "desc",
+        useInitialCache: false,
         onData: (data) => {
           setMovements(data.slice(0, 8));
           markLoaded("movements");
