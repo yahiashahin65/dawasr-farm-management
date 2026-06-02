@@ -19,6 +19,15 @@ const normalizeText = (value) =>
     .replace(/[أإآ]/g, "ا")
     .trim();
 
+const cleanPersonName = (name) =>
+  normalizeText(name)
+    .replace("م/", "")
+    .replace("م /", "")
+    .replace(/^م\s/, "")
+    .replace("المهندس", "")
+    .replace("مهندس", "")
+    .trim();
+
 const detectPersonType = (name) => {
   const cleanName = normalizeText(name);
 
@@ -33,8 +42,10 @@ const detectPersonType = (name) => {
     return "engineer";
   }
 
+  const personName = cleanPersonName(cleanName);
+
   const isAccountant = accountantNames.some(
-    (item) => normalizeText(item) === cleanName
+    (item) => normalizeText(item) === normalizeText(personName)
   );
 
   if (isAccountant) return "accountant";
@@ -42,28 +53,20 @@ const detectPersonType = (name) => {
   return "worker";
 };
 
-const cleanPersonName = (name) =>
-  normalizeText(name)
-    .replace("م/", "")
-    .replace("م /", "")
-    .replace(/^م\s/, "")
-    .replace("المهندس", "")
-    .replace("مهندس", "")
-    .trim();
-
 const splitPlate = (plate) => {
-  const text = String(plate || "").trim();
+  const text = normalizeText(plate);
 
-  const numbers = text.match(/[0-9٠-٩]+/g)?.join(" ") || "";
-  const letters = text
+  const plateNumbers = text.match(/[0-9٠-٩]+/g)?.join(" ") || "";
+
+  const plateLetters = text
     .replace(/[0-9٠-٩]/g, "")
     .replace(/[^\u0600-\u06FF\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
   return {
-    plateLetters: letters,
-    plateNumbers: numbers,
+    plateLetters,
+    plateNumbers,
   };
 };
 
@@ -85,17 +88,27 @@ const findPerson = (name, type, lists) => {
   );
 };
 
+const findFarm = (farmName, farms) => {
+  const cleanFarmName = normalizeText(farmName);
+
+  if (!cleanFarmName) return null;
+
+  return (
+    farms.find((farm) => normalizeText(farm.name) === cleanFarmName) || null
+  );
+};
+
 export default function ImportVehiclesPage() {
   const [rows, setRows] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
 
   const validRows = useMemo(
-    () => rows.filter((row) => row.name || row.plateNumbers || row.plateLetters),
+    () => rows.filter((row) => row.name || row.plateLetters || row.plateNumbers),
     [rows]
   );
 
-  const loadPeople = async () => {
+  const loadRelatedData = async () => {
     const [workersSnap, engineersSnap, accountantsSnap, farmsSnap] =
       await Promise.all([
         getDocs(collection(db, "workers")),
@@ -106,66 +119,104 @@ export default function ImportVehiclesPage() {
 
     return {
       workers: workersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-      engineers: engineersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-      accountants: accountantsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      engineers: engineersSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })),
+      accountants: accountantsSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })),
       farms: farmsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     };
   };
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
+
     if (!file) return;
 
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    try {
+      setMessage("جاري قراءة ملف Excel...");
+      setRows([]);
 
-    const headerIndex = data.findIndex((row) =>
-      row.some((cell) => String(cell).includes("اسم السيارة"))
-    );
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        defval: "",
+      });
 
-    if (headerIndex === -1) {
-      setMessage("لم يتم العثور على جدول السيارات داخل الشيت");
-      return;
+      const headerIndex = data.findIndex((row) => {
+        const values = row.map((value) => normalizeText(value));
+
+        return (
+          values.includes("اسم المعدة") &&
+          values.includes("نمر السيارة") &&
+          values.includes("مكان المعدة") &&
+          values.includes("اسم العامل")
+        );
+      });
+
+      if (headerIndex === -1) {
+        setMessage(
+          "لم يتم العثور على جدول السيارات. تأكد أن الهيدر يحتوي على: اسم المعدة، نمر السيارة، مكان المعدة، اسم العامل"
+        );
+        return;
+      }
+
+      const headerRow = data[headerIndex].map((value) => normalizeText(value));
+
+      const getIndex = (label) => headerRow.findIndex((item) => item === label);
+
+      const nameIndex = getIndex("اسم المعدة");
+      const plateIndex = getIndex("نمر السيارة");
+      const farmIndex = getIndex("مكان المعدة");
+      const riderIndex = getIndex("اسم العامل");
+      const nationalityIndex = getIndex("الجنسية");
+      const phoneIndex = getIndex("رقم الجوال");
+      const technicalStatusIndex = getIndex("الحالة الفنية");
+      const serialIndex = getIndex("تسلسل");
+
+      const bodyRows = data.slice(headerIndex + 1);
+
+      const mappedRows = bodyRows
+        .map((row) => {
+          const name = normalizeText(row[nameIndex]);
+          const plate = normalizeText(row[plateIndex]);
+          const farmName = normalizeText(row[farmIndex]);
+          const riderName = normalizeText(row[riderIndex]);
+          const nationality = normalizeText(row[nationalityIndex]);
+          const phone = normalizeText(row[phoneIndex]);
+          const technicalStatus = normalizeText(row[technicalStatusIndex]);
+          const serial = normalizeText(row[serialIndex]);
+
+          const { plateLetters, plateNumbers } = splitPlate(plate);
+          const assignedToType = detectPersonType(riderName);
+
+          return {
+            name,
+            plateLetters,
+            plateNumbers,
+            farmName,
+            assignedToName: cleanPersonName(riderName),
+            assignedToType,
+            nationality,
+            phone,
+            technicalStatus,
+            serial,
+            status: "صالح",
+          };
+        })
+        .filter((row) => row.name || row.plateLetters || row.plateNumbers);
+
+      setRows(mappedRows);
+      setMessage(`تم قراءة ${mappedRows.length} سيارة من الشيت`);
+    } catch (error) {
+      console.error(error);
+      setMessage("حدث خطأ أثناء قراءة ملف Excel");
     }
-
-    const bodyRows = data.slice(headerIndex + 1);
-
-    const mappedRows = bodyRows
-      .map((row) => {
-        const name = normalizeText(row[0]);
-        const plate = normalizeText(row[1]);
-        const farmName = normalizeText(row[2]);
-        const riderName = normalizeText(row[3]);
-        const nationality = normalizeText(row[4]);
-        const phone = normalizeText(row[5]);
-        const technicalStatus = normalizeText(row[6]);
-        const serial = normalizeText(row[7]);
-        const notes = normalizeText(row[8]);
-
-        const { plateLetters, plateNumbers } = splitPlate(plate);
-        const assignedToType = detectPersonType(riderName);
-
-        return {
-          name,
-          plateLetters,
-          plateNumbers,
-          farmName,
-          assignedToName: cleanPersonName(riderName),
-          assignedToType,
-          nationality,
-          phone,
-          technicalStatus,
-          serial,
-          notes,
-          status: "صالح",
-        };
-      })
-      .filter((row) => row.name || row.plateLetters || row.plateNumbers);
-
-    setRows(mappedRows);
-    setMessage(`تم قراءة ${mappedRows.length} سيارة من الشيت`);
   };
 
   const importVehicles = async () => {
@@ -175,26 +226,26 @@ export default function ImportVehiclesPage() {
     setMessage("");
 
     try {
-      const lists = await loadPeople();
+      const lists = await loadRelatedData();
 
       let imported = 0;
 
       for (const row of validRows) {
         const person = findPerson(row.assignedToName, row.assignedToType, lists);
-
-        const farm =
-          lists.farms.find(
-            (item) => normalizeText(item.name) === normalizeText(row.farmName)
-          ) || null;
+        const farm = findFarm(row.farmName, lists.farms);
 
         await addDoc(collection(db, "vehicles"), {
-          name: row.name,
+          name: row.name || "",
 
-          plateLetters: row.plateLetters,
-          plateNumbers: row.plateNumbers,
+          plateLetters: row.plateLetters || "",
+          plateNumbers: row.plateNumbers || "",
 
           farmId: farm?.id || "",
           farmName: row.farmName || "",
+
+          placeType: farm?.id ? "farm" : "",
+          placeId: farm?.id || "",
+          placeName: row.farmName || "",
 
           assignedToType: row.assignedToType || "",
           assignedToId: person?.id || "",
@@ -205,12 +256,8 @@ export default function ImportVehiclesPage() {
           phone: row.phone || "",
           technicalStatus: row.technicalStatus || "",
           serial: row.serial || "",
-          notes: row.notes || "",
 
           status: "صالح",
-          placeType: farm?.id ? "farm" : "",
-          placeId: farm?.id || "",
-          placeName: row.farmName || "",
 
           inWorkshop: false,
           workshopName: "",
@@ -239,8 +286,10 @@ export default function ImportVehiclesPage() {
       <Layout title="استيراد السيارات من Excel">
         <div className="page-card p-5">
           <h2 className="mb-2 text-xl font-black">استيراد بيانات السيارات</h2>
+
           <p className="mb-4 text-sm font-bold text-slate-500">
-            ارفع ملف Excel وسيتم قراءة السيارات وربط الراكب لو موجود في العمال أو المهندسين أو المحاسبين.
+            ارفع ملف Excel وسيتم قراءة السيارات وربط الراكب لو موجود في العمال
+            أو المهندسين أو المحاسبين.
           </p>
 
           <input
@@ -258,7 +307,7 @@ export default function ImportVehiclesPage() {
 
           {validRows.length > 0 && (
             <>
-              <div className="mt-5 flex items-center justify-between">
+              <div className="mt-5 flex items-center justify-between gap-3">
                 <h3 className="font-black">معاينة البيانات</h3>
 
                 <button
@@ -278,9 +327,12 @@ export default function ImportVehiclesPage() {
                       <th className="table-th">السيارة</th>
                       <th className="table-th">الحروف</th>
                       <th className="table-th">الأرقام</th>
-                      <th className="table-th">المزرعة</th>
+                      <th className="table-th">المكان</th>
                       <th className="table-th">الراكب</th>
                       <th className="table-th">النوع</th>
+                      <th className="table-th">الجنسية</th>
+                      <th className="table-th">الجوال</th>
+                      <th className="table-th">الحالة الفنية</th>
                       <th className="table-th">الحالة</th>
                     </tr>
                   </thead>
@@ -292,7 +344,9 @@ export default function ImportVehiclesPage() {
                         <td className="table-td">{row.plateLetters || "-"}</td>
                         <td className="table-td">{row.plateNumbers || "-"}</td>
                         <td className="table-td">{row.farmName || "-"}</td>
-                        <td className="table-td">{row.assignedToName || "-"}</td>
+                        <td className="table-td">
+                          {row.assignedToName || "-"}
+                        </td>
                         <td className="table-td">
                           {row.assignedToType === "worker"
                             ? "عامل"
@@ -301,6 +355,11 @@ export default function ImportVehiclesPage() {
                             : row.assignedToType === "accountant"
                             ? "محاسب"
                             : "-"}
+                        </td>
+                        <td className="table-td">{row.nationality || "-"}</td>
+                        <td className="table-td">{row.phone || "-"}</td>
+                        <td className="table-td">
+                          {row.technicalStatus || "-"}
                         </td>
                         <td className="table-td">
                           <span className="badge bg-green-50 text-green-700">
