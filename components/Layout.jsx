@@ -60,7 +60,6 @@ const links = [
   label: "المحاسبين",
   icon: faCalculator,
   },
-  {
   { href: "/engineers", label: "المهندسون", icon: faUserTie },
   { href: "/farms", label: "المزارع", icon: faWheatAwn },
   { href: "/kubras", label: "الكِبر", icon: faWarehouse },
