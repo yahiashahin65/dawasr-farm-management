@@ -14,14 +14,29 @@ import {
   getAssetTypeName,
 } from "../../lib/inventory";
 
+const vehicleStatusLabel = (status) => {
+  if (status === "in_workshop") return "في الورشة";
+  if (status === "repaired_unpaid") return "تم الإصلاح وعليه فاتورة";
+  if (status === "repaired_paid") return "تم الإصلاح والفاتورة مسددة";
+  return "سليمة";
+};
+
+const vehicleStatusClass = (status) => {
+  if (status === "in_workshop") return "bg-amber-50 text-amber-700";
+  if (status === "repaired_unpaid") return "bg-red-50 text-red-700";
+  if (status === "repaired_paid") return "bg-blue-50 text-blue-700";
+  return "bg-green-50 text-green-700";
+};
+
 export default function WorkshopAssets() {
   const [assets, setAssets] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [realtimeError, setRealtimeError] = useState("");
 
   useEffect(() => {
-    const unsubscribe = subscribeCachedCollection({
+    const unsubscribeAssets = subscribeCachedCollection({
       db,
       collectionName: "assets",
       cacheKey: "cache:assets",
@@ -34,7 +49,19 @@ export default function WorkshopAssets() {
       },
     });
 
-    return () => unsubscribe?.();
+    const unsubscribeVehicles = subscribeCachedCollection({
+      db,
+      collectionName: "vehicles",
+      cacheKey: "cache:vehicles",
+      orderField: "updatedAt",
+      orderDirection: "desc",
+      onData: setVehicles,
+    });
+
+    return () => {
+      unsubscribeAssets?.();
+      unsubscribeVehicles?.();
+    };
   }, []);
 
   const workshopAssets = useMemo(() => {
@@ -60,6 +87,29 @@ export default function WorkshopAssets() {
     });
   }, [assets, search]);
 
+  const workshopVehicles = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
+    return vehicles.filter((vehicle) => {
+      const isWorkshop =
+        vehicle.status === "in_workshop" ||
+        vehicle.status === "repaired_unpaid";
+
+      if (!isWorkshop) return false;
+
+      const text = `
+        ${vehicle.name || ""}
+        ${vehicle.plateLetters || ""}
+        ${vehicle.plateNumbers || ""}
+        ${vehicle.workshopName || ""}
+        ${vehicle.assignedToName || ""}
+        ${vehicle.farmName || ""}
+      `.toLowerCase();
+
+      return !keyword || text.includes(keyword);
+    });
+  }, [vehicles, search]);
+
   const workshopGroups = useMemo(() => {
     const groups = {};
 
@@ -69,9 +119,7 @@ export default function WorkshopAssets() {
         asset.placeName ||
         "ورشة خارجية غير محددة";
 
-      if (!groups[name]) {
-        groups[name] = [];
-      }
+      if (!groups[name]) groups[name] = [];
 
       groups[name].push(asset);
     });
@@ -90,7 +138,7 @@ export default function WorkshopAssets() {
           <AppLoader
             variant="compact"
             title="جاري تحميل أصول الورش..."
-            subtitle="يتم تجهيز بيانات الأصول داخل الورش الخارجية"
+            subtitle="يتم تجهيز بيانات الأصول والسيارات داخل الورش الخارجية"
           />
         ) : (
           <>
@@ -100,12 +148,11 @@ export default function WorkshopAssets() {
               </div>
             )}
 
-            <div className="mb-4 grid gap-3 lg:grid-cols-3">
+            <div className="mb-4 grid gap-3 lg:grid-cols-4">
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">
-                  إجمالي في الورشة
+                  إجمالي الأصول في الورشة
                 </p>
-
                 <h3 className="mt-2 text-4xl font-black">
                   {workshopAssets.length}
                 </h3>
@@ -113,24 +160,111 @@ export default function WorkshopAssets() {
 
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">عدد الورش</p>
-
                 <h3 className="mt-2 text-4xl font-black">
                   {workshopGroups.length}
                 </h3>
               </div>
 
               <div className="page-card p-5">
-                <p className="text-sm font-bold text-slate-500">فلترة</p>
+                <p className="text-sm font-bold text-slate-500">
+                  سيارات في الورشة / عليها فاتورة
+                </p>
+                <h3 className="mt-2 text-4xl font-black">
+                  {workshopVehicles.length}
+                </h3>
+              </div>
 
+              <div className="page-card p-5">
+                <p className="text-sm font-bold text-slate-500">فلترة</p>
                 <input
                   className="form-input mt-2"
-                  placeholder="بحث باسم الأصل أو الورشة"
+                  placeholder="بحث باسم الأصل أو السيارة أو الورشة أو اللوحة"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
             </div>
 
+            {/* السيارات */}
+            <div className="page-card mb-4 overflow-x-auto">
+              <div className="flex items-center justify-between p-5 pb-3">
+                <h3 className="font-black">
+                  السيارات داخل الورشة أو التي تم إصلاحها ولم تسدد
+                </h3>
+
+                <Link href="/vehicles" className="btn-secondary !py-2">
+                  إدارة السيارات
+                </Link>
+              </div>
+
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="table-th">السيارة</th>
+                    <th className="table-th">اللوحة</th>
+                    <th className="table-th">الراكب</th>
+                    <th className="table-th">المزرعة</th>
+                    <th className="table-th">الحالة</th>
+                    <th className="table-th">آخر تكلفة</th>
+                    <th className="table-th">عرض</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {workshopVehicles.map((vehicle) => (
+                    <tr key={vehicle.id} className="border-t border-slate-100">
+                      <td className="table-td font-bold">
+                        {vehicle.name || "-"}
+                      </td>
+
+                      <td className="table-td">
+                        {vehicle.plateLetters || "-"} /{" "}
+                        {vehicle.plateNumbers || "-"}
+                      </td>
+
+                      <td className="table-td">
+                        {vehicle.assignedToName || "-"}
+                      </td>
+
+                      <td className="table-td">{vehicle.farmName || "-"}</td>
+
+                      <td className="table-td">
+                        <span
+                          className={`badge ${vehicleStatusClass(
+                            vehicle.status
+                          )}`}
+                        >
+                          {vehicleStatusLabel(vehicle.status)}
+                        </span>
+                      </td>
+
+                      <td className="table-td">
+                        {vehicle.lastMaintenanceCost
+                          ? `${vehicle.lastMaintenanceCost} ريال`
+                          : "-"}
+                      </td>
+
+                      <td className="table-td">
+                        <Link
+                          href={`/vehicles/${vehicle.id}`}
+                          className="btn-secondary !py-2"
+                        >
+                          التفاصيل
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {workshopVehicles.length === 0 && (
+                <div className="p-8 text-center text-sm font-bold text-slate-500">
+                  لا توجد سيارات في الورشة أو عليها فواتير حاليًا
+                </div>
+              )}
+            </div>
+
+            {/* العرض القديم الخاص بالأصول كما هو */}
             <div className="grid gap-4">
               {workshopGroups.map((group) => (
                 <div key={group.name} className="page-card overflow-x-auto">
@@ -176,7 +310,10 @@ export default function WorkshopAssets() {
                             </span>
                           </td>
 
-                          <td className="table-td">{getAssetTypeName(asset)}</td>
+                          <td className="table-td">
+                            {getAssetTypeName(asset)}
+                          </td>
+
                           <td className="table-td">{asset.code || "-"}</td>
 
                           <td className="table-td">
@@ -185,7 +322,9 @@ export default function WorkshopAssets() {
                             </span>
                           </td>
 
-                          <td className="table-td">{asset.workerNames || "-"}</td>
+                          <td className="table-td">
+                            {asset.workerNames || "-"}
+                          </td>
 
                           <td className="table-td">
                             <Link
