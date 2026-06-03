@@ -33,12 +33,31 @@ const getEngineerFarmsFromCache = (engineerId) => {
   );
 };
 
+const getEngineerVehiclesFromCache = (engineerId) => {
+  const cached = getCachedCollection("cache:vehicles");
+
+  return cached.filter(
+    (vehicle) =>
+      vehicle.assignedToType === "engineer" &&
+      vehicle.assignedToId === engineerId
+  );
+};
+
+const vehicleStatusLabel = (status) => {
+  if (status === "in_workshop") return "في الورشة";
+  if (status === "repaired_unpaid") return "تم الإصلاح وعليه فاتورة";
+  if (status === "repaired_paid") return "تم الإصلاح والفاتورة مسددة";
+  if (status === "عاطل") return "عاطل";
+  return "صالح";
+};
+
 export default function EngineerDetails() {
   const router = useRouter();
   const { id } = router.query;
 
   const [engineer, setEngineer] = useState(null);
   const [farms, setFarms] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [offlineNotice, setOfflineNotice] = useState("");
 
@@ -51,10 +70,12 @@ export default function EngineerDetails() {
       try {
         const cachedEngineer = getEngineerFromCache(id);
         const cachedFarms = getEngineerFarmsFromCache(id);
+        const cachedVehicles = getEngineerVehiclesFromCache(id);
 
         if (cachedEngineer) {
           setEngineer(cachedEngineer);
           setFarms(cachedFarms);
+          setVehicles(cachedVehicles);
 
           if (!isOnline()) {
             setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
@@ -63,12 +84,19 @@ export default function EngineerDetails() {
           }
         }
 
-        const [engineerSnap, farmsSnap] = await Promise.all([
+        const [engineerSnap, farmsSnap, vehiclesSnap] = await Promise.all([
           getDoc(doc(db, "engineers", id)),
           getDocs(
             query(
               collection(db, "farms"),
               where("engineerIds", "array-contains", id)
+            )
+          ),
+          getDocs(
+            query(
+              collection(db, "vehicles"),
+              where("assignedToType", "==", "engineer"),
+              where("assignedToId", "==", id)
             )
           ),
         ]);
@@ -88,6 +116,13 @@ export default function EngineerDetails() {
             ...d.data(),
           }))
         );
+
+        setVehicles(
+          vehiclesSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
       } catch (error) {
         console.error(error);
 
@@ -96,6 +131,7 @@ export default function EngineerDetails() {
         if (cachedEngineer) {
           setEngineer(cachedEngineer);
           setFarms(getEngineerFarmsFromCache(id));
+          setVehicles(getEngineerVehiclesFromCache(id));
           setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
         } else {
           setEngineer(null);
@@ -115,7 +151,7 @@ export default function EngineerDetails() {
           <AppLoader
             variant="compact"
             title="جاري تحميل تفاصيل المهندس..."
-            subtitle="يتم تجهيز بيانات المهندس والمزارع"
+            subtitle="يتم تجهيز بيانات المهندس والمزارع والسيارات"
           />
         ) : !engineer ? (
           <div className="page-card p-5 text-center font-bold text-slate-500">
@@ -144,6 +180,22 @@ export default function EngineerDetails() {
 
               <p className="mt-3 text-sm">{engineer.notes || "-"}</p>
 
+              <div className="mt-5 grid gap-3">
+                <div className="rounded-2xl bg-green-50 p-4 text-green-800">
+                  <b>{farms.length}</b>
+                  <span className="mr-2 text-sm font-bold">
+                    مزرعة مسؤول عنها
+                  </span>
+                </div>
+
+                <div className="rounded-2xl bg-purple-50 p-4 text-purple-800">
+                  <b>{vehicles.length}</b>
+                  <span className="mr-2 text-sm font-bold">
+                    سيارة مسجلة على المهندس
+                  </span>
+                </div>
+              </div>
+
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href={`/engineers/edit/${engineer.id}`}
@@ -158,25 +210,64 @@ export default function EngineerDetails() {
               </div>
             </div>
 
-            <div className="page-card p-5 lg:col-span-2">
-              <h3 className="mb-4 font-black">المزارع المسئول عنها</h3>
+            <div className="space-y-5 lg:col-span-2">
+              <div className="page-card p-5">
+                <h3 className="mb-4 font-black">المزارع المسئول عنها</h3>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {farms.length ? (
-                  farms.map((farm) => (
-                    <Link
-                      key={farm.id}
-                      href={`/farms/${farm.id}`}
-                      className="rounded-2xl border p-4 font-bold hover:bg-slate-50"
-                    >
-                      {farm.name || "-"}
-                    </Link>
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    لا توجد مزارع مسجلة على هذا المهندس.
-                  </p>
-                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {farms.length ? (
+                    farms.map((farm) => (
+                      <Link
+                        key={farm.id}
+                        href={`/farms/${farm.id}`}
+                        className="rounded-2xl border p-4 font-bold hover:bg-slate-50"
+                      >
+                        {farm.name || "-"}
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      لا توجد مزارع مسجلة على هذا المهندس.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="page-card p-5">
+                <h3 className="mb-4 font-black">
+                  السيارات المسجلة على المهندس
+                </h3>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {vehicles.length ? (
+                    vehicles.map((vehicle) => (
+                      <Link
+                        key={vehicle.id}
+                        href={`/vehicles/${vehicle.id}`}
+                        className="rounded-2xl border p-4 hover:bg-slate-50"
+                      >
+                        <b>{vehicle.name || "-"}</b>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {vehicle.plateLetters || "-"} /{" "}
+                          {vehicle.plateNumbers || "-"}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {vehicle.farmName || "غير محدد"}
+                        </p>
+
+                        <p className="mt-1 text-xs font-bold text-slate-400">
+                          {vehicleStatusLabel(vehicle.status)}
+                        </p>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      لا توجد سيارات مسجلة على هذا المهندس.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -184,4 +275,4 @@ export default function EngineerDetails() {
       </Layout>
     </ProtectedRoute>
   );
-}
+    }
