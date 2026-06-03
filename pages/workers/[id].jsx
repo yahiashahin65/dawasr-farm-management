@@ -32,6 +32,14 @@ const normalizeMovement = (value) => {
   return text || "-";
 };
 
+const vehicleStatusLabel = (status) => {
+  if (status === "in_workshop") return "في الورشة";
+  if (status === "repaired_unpaid") return "تم الإصلاح وعليه فاتورة";
+  if (status === "repaired_paid") return "تم الإصلاح والفاتورة مسددة";
+  if (status === "عاطل") return "عاطل";
+  return "صالح";
+};
+
 const getWorkerFromCache = (workerId) => {
   const cached = getCachedCollection("cache:workers");
   return cached.find((item) => item.id === workerId) || null;
@@ -51,6 +59,16 @@ const getWorkerSprinklersFromCache = (workerId) => {
   return cached.filter((sprinkler) => sprinkler.workerId === workerId);
 };
 
+const getWorkerVehiclesFromCache = (workerId) => {
+  const cached = getCachedCollection("cache:vehicles");
+
+  return cached.filter(
+    (vehicle) =>
+      vehicle.assignedToType === "worker" &&
+      vehicle.assignedToId === workerId
+  );
+};
+
 export default function WorkerDetails() {
   const router = useRouter();
   const { id } = router.query;
@@ -58,6 +76,7 @@ export default function WorkerDetails() {
   const [worker, setWorker] = useState(null);
   const [assets, setAssets] = useState([]);
   const [sprinklers, setSprinklers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [offlineNotice, setOfflineNotice] = useState("");
 
@@ -71,11 +90,13 @@ export default function WorkerDetails() {
         const cachedWorker = getWorkerFromCache(id);
         const cachedAssets = getWorkerAssetsFromCache(id);
         const cachedSprinklers = getWorkerSprinklersFromCache(id);
+        const cachedVehicles = getWorkerVehiclesFromCache(id);
 
         if (cachedWorker) {
           setWorker(cachedWorker);
           setAssets(cachedAssets);
           setSprinklers(cachedSprinklers);
+          setVehicles(cachedVehicles);
 
           if (!isOnline()) {
             setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
@@ -84,16 +105,29 @@ export default function WorkerDetails() {
           }
         }
 
-        const [workerSnap, assetsSnap, sprinklersSnap] = await Promise.all([
-          getDoc(doc(db, "workers", id)),
-          getDocs(
-            query(
-              collection(db, "assets"),
-              where("workerIds", "array-contains", id)
-            )
-          ),
-          getDocs(query(collection(db, "sprinklers"), where("workerId", "==", id))),
-        ]);
+        const [workerSnap, assetsSnap, sprinklersSnap, vehiclesSnap] =
+          await Promise.all([
+            getDoc(doc(db, "workers", id)),
+            getDocs(
+              query(
+                collection(db, "assets"),
+                where("workerIds", "array-contains", id)
+              )
+            ),
+            getDocs(
+              query(
+                collection(db, "sprinklers"),
+                where("workerId", "==", id)
+              )
+            ),
+            getDocs(
+              query(
+                collection(db, "vehicles"),
+                where("assignedToType", "==", "worker"),
+                where("assignedToId", "==", id)
+              )
+            ),
+          ]);
 
         if (workerSnap.exists()) {
           setWorker({
@@ -117,6 +151,13 @@ export default function WorkerDetails() {
             ...d.data(),
           }))
         );
+
+        setVehicles(
+          vehiclesSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
       } catch (error) {
         console.error(error);
 
@@ -126,6 +167,7 @@ export default function WorkerDetails() {
           setWorker(cachedWorker);
           setAssets(getWorkerAssetsFromCache(id));
           setSprinklers(getWorkerSprinklersFromCache(id));
+          setVehicles(getWorkerVehiclesFromCache(id));
           setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
         } else {
           alert("حدث خطأ أثناء تحميل بيانات العامل");
@@ -146,7 +188,7 @@ export default function WorkerDetails() {
           <AppLoader
             variant="compact"
             title="جاري تحميل تفاصيل العامل..."
-            subtitle="يتم تجهيز بيانات العامل والعهد والرشاشات"
+            subtitle="يتم تجهيز بيانات العامل والعهد والرشاشات والسيارات"
           />
         ) : !worker ? (
           <div className="page-card p-5 text-center font-bold text-slate-500">
@@ -195,6 +237,13 @@ export default function WorkerDetails() {
                   <b>{sprinklers.length}</b>
                   <span className="mr-2 text-sm font-bold">
                     رشاش مسجل على العامل
+                  </span>
+                </div>
+
+                <div className="rounded-2xl bg-purple-50 p-4 text-purple-800">
+                  <b>{vehicles.length}</b>
+                  <span className="mr-2 text-sm font-bold">
+                    سيارة مسجلة على العامل
                   </span>
                 </div>
               </div>
@@ -272,6 +321,43 @@ export default function WorkerDetails() {
                   ) : (
                     <p className="text-sm text-slate-500">
                       لا توجد رشاشات مسجلة.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="page-card p-5">
+                <h3 className="mb-4 text-lg font-black">
+                  السيارات المسجلة على العامل
+                </h3>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {vehicles.length ? (
+                    vehicles.map((vehicle) => (
+                      <Link
+                        key={vehicle.id}
+                        href={`/vehicles/${vehicle.id}`}
+                        className="rounded-2xl border border-slate-100 p-4 hover:bg-slate-50"
+                      >
+                        <b>{vehicle.name || "-"}</b>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {vehicle.plateLetters || "-"} /{" "}
+                          {vehicle.plateNumbers || "-"}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {vehicle.farmName || "غير محدد"}
+                        </p>
+
+                        <p className="mt-1 text-xs font-bold text-slate-400">
+                          {vehicleStatusLabel(vehicle.status)}
+                        </p>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      لا توجد سيارات مسجلة.
                     </p>
                   )}
                 </div>
