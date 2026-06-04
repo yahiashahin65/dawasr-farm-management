@@ -51,16 +51,12 @@ const isAvailableStatus = (status) =>
 
 const statusLabel = (status) => {
   if (status === "in_workshop") return "في الورشة";
-  if (status === "repaired_unpaid") return "تم الإصلاح وعليه فاتورة";
-  if (status === "repaired_paid") return "تم الإصلاح والفاتورة مسددة";
   if (status === "عاطل") return "عاطل";
-  if (isAvailableStatus(status)) return "صالح";
   return "صالح";
 };
 
 const statusClass = (status) => {
   if (status === "in_workshop") return "bg-amber-50 text-amber-700";
-  if (status === "repaired_unpaid") return "bg-red-50 text-red-700";
   if (status === "عاطل") return "bg-red-50 text-red-700";
   return "bg-green-50 text-green-700";
 };
@@ -153,11 +149,11 @@ export default function Vehicles() {
     () => ({
       total: items.length,
       inWorkshop: items.filter((item) => item.status === "in_workshop").length,
-      repairedUnpaid: items.filter((item) => item.status === "repaired_unpaid")
+      unpaidInvoices: maintenance.filter((item) => item.invoiceStatus === "unpaid")
         .length,
       available: items.filter((item) => isAvailableStatus(item.status)).length,
     }),
-    [items]
+    [items, maintenance]
   );
 
   const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
@@ -174,12 +170,6 @@ export default function Vehicles() {
       ),
     [filteredItems, currentPage]
   );
-
-  const fromItem = filteredItems.length
-    ? (currentPage - 1) * PAGE_SIZE + 1
-    : 0;
-
-  const toItem = Math.min(currentPage * PAGE_SIZE, filteredItems.length);
 
   const openEntry = (vehicle) => {
     setEntryVehicle(vehicle);
@@ -339,7 +329,8 @@ export default function Vehicles() {
       }
 
       await updateDoc(doc(db, "vehicles", exitVehicle.id), {
-        status: invoicePaid ? "صالح" : "repaired_unpaid",
+        status: "صالح",
+        hasUnpaidInvoices: !invoicePaid,
         workshopEntryId: "",
         workshopName: "",
         faultReason: "",
@@ -356,38 +347,6 @@ export default function Vehicles() {
       alert("تعذر إخراج السيارة من الورشة");
     } finally {
       setSavingAction(false);
-    }
-  };
-
-  const markInvoicePaid = async (vehicle) => {
-    if (!confirm("تأكيد سداد فاتورة السيارة؟")) return;
-
-    try {
-      const last = maintenance
-        .filter(
-          (item) => item.vehicleId === vehicle.id && item.invoiceStatus === "unpaid"
-        )
-        .sort((a, b) =>
-          String(b.exitedAt || "").localeCompare(String(a.exitedAt || ""))
-        )[0];
-
-      if (last?.id) {
-        await updateDoc(doc(db, "vehicleMaintenance", last.id), {
-          invoicePaid: true,
-          invoiceStatus: "paid",
-          paidAt: new Date().toISOString().slice(0, 10),
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      await updateDoc(doc(db, "vehicles", vehicle.id), {
-        status: "صالح",
-        lastMaintenancePaid: true,
-        updatedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error(error);
-      alert("تعذر تسجيل السداد");
     }
   };
 
@@ -465,10 +424,10 @@ export default function Vehicles() {
 
               <div className="page-card p-5">
                 <p className="text-sm font-bold text-slate-500">
-                  اتصلحت وعليها فلوس
+                  فواتير غير مسددة
                 </p>
                 <h3 className="mt-2 text-4xl font-black text-red-700">
-                  {stats.repairedUnpaid}
+                  {stats.unpaidInvoices}
                 </h3>
               </div>
             </div>
@@ -502,7 +461,6 @@ export default function Vehicles() {
                 <option value="صالح">صالح</option>
                 <option value="عاطل">عاطل</option>
                 <option value="in_workshop">في الورشة</option>
-                <option value="repaired_unpaid">اتصلحت وعليها فلوس</option>
               </select>
 
               <div className="flex flex-wrap gap-2">
@@ -518,6 +476,11 @@ export default function Vehicles() {
                   مسح
                 </button>
 
+                <Link href="/vehicles/invoices" className="btn-primary">
+                  <FontAwesomeIcon icon={faMoneyBill} />
+                  تسديد الفواتير
+                </Link>
+
                 {canManage && (
                   <Link href="/vehicles/add" className="btn-primary">
                     <FontAwesomeIcon icon={faPlus} />
@@ -525,10 +488,6 @@ export default function Vehicles() {
                   </Link>
                 )}
               </div>
-            </div>
-
-            <div className="mb-3 text-sm font-bold text-slate-500">
-              معروض {fromItem} - {toItem} من {filteredItems.length} سيارة
             </div>
 
             <div className="page-card overflow-x-auto">
@@ -620,17 +579,6 @@ export default function Vehicles() {
                               خروج من الورشة
                             </button>
                           )}
-
-                          {canManage &&
-                            vehicle.status === "repaired_unpaid" && (
-                              <button
-                                onClick={() => markInvoicePaid(vehicle)}
-                                className="btn-primary !py-2"
-                              >
-                                <FontAwesomeIcon icon={faMoneyBill} />
-                                تسديد
-                              </button>
-                            )}
 
                           {canManage && (
                             <button
