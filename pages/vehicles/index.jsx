@@ -47,7 +47,8 @@ const emptyExitForm = {
 };
 
 const isAvailableStatus = (status) =>
-  !status || status === "صالح" || status === "available" || status === "سليمة";
+  !status || status === "صالح" || status === "available" || status === "سليمة" || status === "repaired_unpaid" ||
+  status === "repaired_paid";
 
 const statusLabel = (status) => {
   if (status === "in_workshop") return "في الورشة";
