@@ -21,6 +21,7 @@ import {
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 const getAssetTypeFromCache = (typeId) => {
   const cached = getCachedCollection("cache:assetTypes");
@@ -99,6 +100,7 @@ const queueAssetTypeUpdate = (typeId, payload) => {
 export default function EditAssetType() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [form, setForm] = useState({
     name: "",
@@ -110,7 +112,13 @@ export default function EditAssetType() {
   const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
-    if (!id) return;
+    if (!loadingRole && !canManage) {
+      router.replace("/asset-types");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (!id || loadingRole || !canManage) return;
 
     const loadType = async () => {
       setInitialLoading(true);
@@ -166,11 +174,12 @@ export default function EditAssetType() {
     };
 
     loadType();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   const submit = async (event) => {
     event.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     const name = form.name.trim();
@@ -233,6 +242,20 @@ export default function EditAssetType() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل نوع معدة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل نوع معدة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
