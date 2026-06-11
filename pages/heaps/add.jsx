@@ -21,6 +21,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
@@ -34,6 +36,7 @@ const addToHeapsCache = (heap) => {
 
 export default function AddHeapPage() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [farms, setFarms] = useState([]);
   const [cropOptions, setCropOptions] = useState(DEFAULT_HEAP_CROP_TYPES);
@@ -52,6 +55,14 @@ export default function AddHeapPage() {
   });
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/heaps");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const loadData = async () => {
       try {
         const [farmsSnap, settings] = await Promise.all([
@@ -81,7 +92,7 @@ export default function AddHeapPage() {
     };
 
     loadData();
-  }, []);
+  }, [loadingRole, canManage]);
 
   useEffect(() => {
     if (!image) {
@@ -117,6 +128,7 @@ export default function AddHeapPage() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     if (!form.pileName.trim()) {
@@ -142,16 +154,11 @@ export default function AddHeapPage() {
 
       const basePayload = {
         pileName: form.pileName.trim(),
-
         farmId: form.farmId,
         farmName: selectedFarm?.name || "",
-
         cropType: form.cropType || "غير معلوم",
-
         sprinklerName: form.sprinklerName.trim(),
-
         bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
-
         notes: form.notes.trim(),
       };
 
@@ -246,6 +253,20 @@ export default function AddHeapPage() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة كوم">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة كوم"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
