@@ -10,6 +10,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const normalizeMovement = (value) => {
   const text = String(value || "").trim();
@@ -68,6 +69,7 @@ function InfoCard({ label, value, href = null }) {
 export default function SprinklerDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [item, setItem] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -175,12 +177,14 @@ export default function SprinklerDetails() {
                     </p>
                   </div>
 
-                  <Link
-                    href={`/sprinklers/edit/${item.id}`}
-                    className="btn-primary"
-                  >
-                    تعديل
-                  </Link>
+                  {canManage && (
+                    <Link
+                      href={`/sprinklers/edit/${item.id}`}
+                      className="btn-primary"
+                    >
+                      تعديل
+                    </Link>
+                  )}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -200,10 +204,7 @@ export default function SprinklerDetails() {
                     value={normalizeMovement(item.movementType)}
                   />
 
-                  <InfoCard
-                    label="عدد الأبراج"
-                    value={getTowersCount(item)}
-                  />
+                  <InfoCard label="عدد الأبراج" value={getTowersCount(item)} />
 
                   <InfoCard label="الهكتار" value={getHectareNumber(item)} />
 
