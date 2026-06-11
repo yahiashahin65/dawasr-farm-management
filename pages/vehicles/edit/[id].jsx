@@ -7,10 +7,12 @@ import { subscribeCachedCollection } from "../../../lib/realtimeCache";
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 export default function EditVehicle() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [workers, setWorkers] = useState([]);
   const [engineers, setEngineers] = useState([]);
@@ -32,6 +34,14 @@ export default function EditVehicle() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/vehicles");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const unsubs = [
       subscribeCachedCollection({
         db,
@@ -68,10 +78,10 @@ export default function EditVehicle() {
     ];
 
     return () => unsubs.forEach((unsubscribe) => unsubscribe?.());
-  }, []);
+  }, [loadingRole, canManage]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || loadingRole || !canManage) return;
 
     (async () => {
       const snap = await getDoc(doc(db, "vehicles", id));
@@ -93,7 +103,7 @@ export default function EditVehicle() {
 
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, loadingRole, canManage]);
 
   const assignees = useMemo(() => {
     if (form.assignedToType === "worker") return workers;
@@ -105,7 +115,12 @@ export default function EditVehicle() {
   const submit = async (e) => {
     e.preventDefault();
 
-    if (!form.name.trim()) return alert("اسم السيارة مطلوب");
+    if (!canManage) return;
+
+    if (!form.name.trim()) {
+      alert("اسم السيارة مطلوب");
+      return;
+    }
 
     setSaving(true);
 
@@ -143,6 +158,20 @@ export default function EditVehicle() {
       setSaving(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل سيارة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل السيارة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
