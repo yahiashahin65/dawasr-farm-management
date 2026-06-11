@@ -22,6 +22,7 @@ import {
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -63,6 +64,7 @@ const addMovementToCache = (movement) => {
 export default function MoveAsset() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [asset, setAsset] = useState(null);
   const [farms, setFarms] = useState([]);
@@ -80,7 +82,13 @@ export default function MoveAsset() {
   });
 
   useEffect(() => {
-    if (!id) return;
+    if (!loadingRole && !canManage) {
+      router.replace("/assets");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (!id || loadingRole || !canManage) return;
 
     const loadData = async () => {
       setInitialLoading(true);
@@ -179,7 +187,7 @@ export default function MoveAsset() {
     };
 
     loadData();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   const places = useMemo(() => {
     if (form.placeType === "farm") return farms;
@@ -190,6 +198,7 @@ export default function MoveAsset() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     const isExternalWorkshop = form.placeType === "external_workshop";
@@ -358,6 +367,20 @@ export default function MoveAsset() {
     }
   };
 
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="نقل الأصل">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية نقل الأصل"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
+
   return (
     <ProtectedRoute>
       <Layout title="نقل الأصل">
@@ -461,4 +484,4 @@ export default function MoveAsset() {
       </Layout>
     </ProtectedRoute>
   );
-        }
+}
