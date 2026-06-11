@@ -17,6 +17,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const getKubraFromCache = (kubraId) => {
   const cached = getCachedCollection("cache:kubras");
@@ -36,6 +37,7 @@ const getKubraAssetsFromCache = (kubraId) => {
 export default function KubraDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [kubra, setKubra] = useState(null);
   const [assets, setAssets] = useState([]);
@@ -144,9 +146,11 @@ export default function KubraDetails() {
               </p>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link href={`/kubras/edit/${kubra.id}`} className="btn-primary">
-                  تعديل الكِبرة
-                </Link>
+                {canManage && (
+                  <Link href={`/kubras/edit/${kubra.id}`} className="btn-primary">
+                    تعديل الكِبرة
+                  </Link>
+                )}
 
                 <Link href="/kubras" className="btn-secondary">
                   رجوع للكِبر
