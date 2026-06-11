@@ -24,6 +24,7 @@ import {
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
@@ -59,6 +60,7 @@ const updateHeapCache = (heapId, payload) => {
 export default function EditHeapPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [farms, setFarms] = useState([]);
   const [cropOptions, setCropOptions] = useState(DEFAULT_HEAP_CROP_TYPES);
@@ -82,7 +84,13 @@ export default function EditHeapPage() {
   const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
-    if (!id) return;
+    if (!loadingRole && !canManage) {
+      router.replace("/heaps");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (!id || loadingRole || !canManage) return;
 
     const loadData = async () => {
       setInitialLoading(true);
@@ -191,7 +199,7 @@ export default function EditHeapPage() {
     };
 
     loadData();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   useEffect(() => {
     if (!image) {
@@ -222,6 +230,7 @@ export default function EditHeapPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (saving) return;
 
     if (!form.pileName.trim()) {
@@ -335,6 +344,20 @@ export default function EditHeapPage() {
       setSaving(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل الكوم">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل الكوم"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
