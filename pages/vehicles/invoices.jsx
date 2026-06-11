@@ -8,6 +8,7 @@ import { subscribeCachedCollection } from "../../lib/realtimeCache";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -18,6 +19,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 export default function VehicleInvoices() {
+  const { canManage } = useUserRole();
+
   const [maintenance, setMaintenance] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState("");
@@ -117,6 +120,7 @@ export default function VehicleInvoices() {
   }, [filteredInvoices]);
 
   const markInvoicePaid = async (invoice) => {
+    if (!canManage) return;
     if (!confirm("تأكيد تسديد هذه الفاتورة؟")) return;
 
     setPayingId(invoice.id);
@@ -249,7 +253,8 @@ export default function VehicleInvoices() {
                     <th className="table-th">الصيانة</th>
                     <th className="table-th">قطع الغيار</th>
                     <th className="table-th">الإجمالي</th>
-                    <th className="table-th">الإجراء</th>
+
+                    {canManage && <th className="table-th">الإجراء</th>}
                   </tr>
                 </thead>
 
@@ -267,9 +272,7 @@ export default function VehicleInvoices() {
                         {invoice.plateNumbers || "-"}
                       </td>
 
-                      <td className="table-td">
-                        {invoice.farmName || "-"}
-                      </td>
+                      <td className="table-td">{invoice.farmName || "-"}</td>
 
                       <td className="table-td">{invoice.enteredAt || "-"}</td>
                       <td className="table-td">{invoice.exitedAt || "-"}</td>
@@ -283,17 +286,19 @@ export default function VehicleInvoices() {
                         {invoice.totalCost || 0} ريال
                       </td>
 
-                      <td className="table-td">
-                        <button
-                          type="button"
-                          disabled={payingId === invoice.id}
-                          onClick={() => markInvoicePaid(invoice)}
-                          className="btn-primary !py-2"
-                        >
-                          <FontAwesomeIcon icon={faMoneyBill} />
-                          {payingId === invoice.id ? "جاري..." : "تسديد"}
-                        </button>
-                      </td>
+                      {canManage && (
+                        <td className="table-td">
+                          <button
+                            type="button"
+                            disabled={payingId === invoice.id}
+                            onClick={() => markInvoicePaid(invoice)}
+                            className="btn-primary !py-2"
+                          >
+                            <FontAwesomeIcon icon={faMoneyBill} />
+                            {payingId === invoice.id ? "جاري..." : "تسديد"}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
