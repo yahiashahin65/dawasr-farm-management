@@ -54,7 +54,7 @@ const normalizeGear = (value) => {
 
 export default function AddSprinkler() {
   const router = useRouter();
-  const { canManage } = useUserRole();
+  const { canManage, loadingRole } = useUserRole();
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -83,6 +83,14 @@ export default function AddSprinkler() {
   });
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/sprinklers");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const loadData = async () => {
       setInitialLoading(true);
 
@@ -122,7 +130,7 @@ export default function AddSprinkler() {
     };
 
     loadData();
-  }, []);
+  }, [loadingRole, canManage]);
 
   const machineOptions = useMemo(
     () => ["مكينة 1", "مكينة 2", "مكينة 3", "مكينة 4"],
@@ -204,7 +212,8 @@ export default function AddSprinkler() {
   const submit = async (e) => {
     e.preventDefault();
 
-    if (!canManage || saving) return;
+    if (!canManage) return;
+    if (saving) return;
 
     if (!form.name.trim()) {
       alert("اسم الرشاش مطلوب");
@@ -327,6 +336,20 @@ export default function AddSprinkler() {
       setSaving(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة رشاش">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة رشاش"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
@@ -528,4 +551,4 @@ export default function AddSprinkler() {
       </Layout>
     </ProtectedRoute>
   );
-  }
+}
