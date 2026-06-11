@@ -9,6 +9,7 @@ import { isOnline } from "../../lib/offlineQueue";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import useUserRole from "../../hooks/useUserRole";
 
 const getHeapFromCache = (heapId) => {
   const cached = getCachedCollection("cache:heaps");
@@ -18,6 +19,7 @@ const getHeapFromCache = (heapId) => {
 export default function HeapDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [heap, setHeap] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -98,9 +100,11 @@ export default function HeapDetailsPage() {
                 تفاصيل الكوم
               </h1>
 
-              <Link href={`/heaps/edit/${heap.id}`} className="btn-primary">
-                تعديل الكوم
-              </Link>
+              {canManage && (
+                <Link href={`/heaps/edit/${heap.id}`} className="btn-primary">
+                  تعديل الكوم
+                </Link>
+              )}
             </div>
 
             {heap.imageUrl && (
