@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
@@ -11,6 +11,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -22,6 +24,7 @@ const addAssetTypeToCache = (type) => {
 
 export default function AddAssetType() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [form, setForm] = useState({
     name: "",
@@ -30,9 +33,16 @@ export default function AddAssetType() {
 
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/asset-types");
+    }
+  }, [loadingRole, canManage, router]);
+
   const submit = async (event) => {
     event.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     const name = form.name.trim();
@@ -124,6 +134,20 @@ export default function AddAssetType() {
     }
   };
 
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة نوع معدة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة نوع معدة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
+
   return (
     <ProtectedRoute>
       <Layout title="إضافة نوع معدة">
@@ -151,4 +175,4 @@ export default function AddAssetType() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+}
