@@ -17,6 +17,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const getAccountantFromCache = (accountantId) => {
   const cached = getCachedCollection("cache:accountants");
@@ -44,6 +45,7 @@ const vehicleStatusLabel = (status) => {
 export default function AccountantDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [item, setItem] = useState(null);
   const [vehicles, setVehicles] = useState([]);
@@ -161,12 +163,14 @@ export default function AccountantDetails() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link
-                  href={`/accountants/edit/${item.id}`}
-                  className="btn-primary"
-                >
-                  تعديل المحاسب
-                </Link>
+                {canManage && (
+                  <Link
+                    href={`/accountants/edit/${item.id}`}
+                    className="btn-primary"
+                  >
+                    تعديل المحاسب
+                  </Link>
+                )}
 
                 <Link href="/accountants" className="btn-secondary">
                   رجوع للمحاسبين
