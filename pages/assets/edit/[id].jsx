@@ -26,6 +26,7 @@ import {
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 const categories = [
   { value: "asset", label: "معدة" },
@@ -70,6 +71,7 @@ const updateAssetCache = (assetId, payload) => {
 export default function EditAsset() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [workers, setWorkers] = useState([]);
   const [farms, setFarms] = useState([]);
@@ -104,6 +106,12 @@ export default function EditAsset() {
     imageUrl: "",
   });
 
+  useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/assets");
+    }
+  }, [loadingRole, canManage, router]);
+
   const fillForm = (data) => {
     setForm((prev) => ({
       ...prev,
@@ -127,7 +135,7 @@ export default function EditAsset() {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || loadingRole || !canManage) return;
 
     const loadData = async () => {
       setInitialLoading(true);
@@ -211,7 +219,7 @@ export default function EditAsset() {
     };
 
     loadData();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   useEffect(() => {
     if (!image) {
@@ -273,6 +281,7 @@ export default function EditAsset() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     if (!form.name.trim()) {
@@ -449,6 +458,20 @@ export default function EditAsset() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل أصل">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل الأصل"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
