@@ -97,7 +97,7 @@ const updateSprinklerCache = (sprinklerId, payload) => {
 export default function EditSprinkler() {
   const router = useRouter();
   const { id } = router.query;
-  const { canManage } = useUserRole();
+  const { canManage, loadingRole } = useUserRole();
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -144,7 +144,13 @@ export default function EditSprinkler() {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!loadingRole && !canManage) {
+      router.replace("/sprinklers");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (!id || loadingRole || !canManage) return;
 
     const loadData = async () => {
       setInitialLoading(true);
@@ -255,7 +261,7 @@ export default function EditSprinkler() {
     };
 
     loadData();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   const machineOptions = useMemo(() => {
     return Array.from(
@@ -351,7 +357,8 @@ export default function EditSprinkler() {
   const submit = async (e) => {
     e.preventDefault();
 
-    if (!canManage || saving) return;
+    if (!canManage) return;
+    if (saving) return;
 
     if (!form.name.trim()) {
       alert("اسم الرشاش مطلوب");
@@ -436,6 +443,20 @@ export default function EditSprinkler() {
       setSaving(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل الرشاش">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل الرشاش"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
