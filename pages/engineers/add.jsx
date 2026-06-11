@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
@@ -11,6 +11,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -22,6 +24,7 @@ const addEngineerToCache = (engineer) => {
 
 export default function AddEngineer() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [form, setForm] = useState({
     name: "",
@@ -31,9 +34,16 @@ export default function AddEngineer() {
 
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/engineers");
+    }
+  }, [loadingRole, canManage, router]);
+
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     if (!form.name.trim()) {
@@ -122,6 +132,20 @@ export default function AddEngineer() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة مهندس">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة مهندس"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
