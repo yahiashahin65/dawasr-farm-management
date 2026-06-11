@@ -19,6 +19,7 @@ import {
 import ProtectedRoute from "../../../components/ProtectedRoute";
 import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
+import useUserRole from "../../../hooks/useUserRole";
 
 const getFarmFromCache = (farmId) => {
   const cached = getCachedCollection("cache:farms");
@@ -143,6 +144,7 @@ const queueFarmUpdate = (farmId, payload) => {
 export default function EditFarm() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage, loadingRole } = useUserRole();
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -158,7 +160,13 @@ export default function EditFarm() {
   });
 
   useEffect(() => {
-    if (!id) return;
+    if (!loadingRole && !canManage) {
+      router.replace("/farms");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (!id || loadingRole || !canManage) return;
 
     const loadData = async () => {
       setInitialLoading(true);
@@ -236,7 +244,7 @@ export default function EditFarm() {
     };
 
     loadData();
-  }, [id, router]);
+  }, [id, router, loadingRole, canManage]);
 
   const toggle = (engineerId) => {
     setForm((prev) => ({
@@ -250,6 +258,7 @@ export default function EditFarm() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (saving) return;
 
     if (!form.name.trim()) {
@@ -308,6 +317,20 @@ export default function EditFarm() {
       setSaving(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="تعديل مزرعة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية تعديل مزرعة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
