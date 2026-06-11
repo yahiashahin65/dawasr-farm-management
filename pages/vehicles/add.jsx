@@ -12,6 +12,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -24,6 +26,7 @@ const addVehicleToCache = (vehicle) =>
 
 export default function AddVehicle() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [workers, setWorkers] = useState([]);
   const [engineers, setEngineers] = useState([]);
@@ -43,6 +46,14 @@ export default function AddVehicle() {
   });
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/vehicles");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const unsubs = [
       subscribeCachedCollection({
         db,
@@ -79,7 +90,7 @@ export default function AddVehicle() {
     ];
 
     return () => unsubs.forEach((unsubscribe) => unsubscribe?.());
-  }, []);
+  }, [loadingRole, canManage]);
 
   const assignees = useMemo(() => {
     if (form.assignedToType === "worker") return workers;
@@ -91,8 +102,13 @@ export default function AddVehicle() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
-    if (!form.name.trim()) return alert("اسم السيارة مطلوب");
+
+    if (!form.name.trim()) {
+      alert("اسم السيارة مطلوب");
+      return;
+    }
 
     setLoading(true);
 
@@ -173,6 +189,20 @@ export default function AddVehicle() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة سيارة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة السيارة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
