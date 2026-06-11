@@ -17,6 +17,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const getFarmFromCache = (farmId) => {
   const cached = getCachedCollection("cache:farms");
@@ -36,6 +37,7 @@ const getFarmAssetsFromCache = (farmId) => {
 export default function FarmDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [farm, setFarm] = useState(null);
   const [assets, setAssets] = useState([]);
@@ -150,9 +152,11 @@ export default function FarmDetails() {
               <p className="mt-3 text-sm">{farm.notes || "-"}</p>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link href={`/farms/edit/${farm.id}`} className="btn-primary">
-                  تعديل المزرعة
-                </Link>
+                {canManage && (
+                  <Link href={`/farms/edit/${farm.id}`} className="btn-primary">
+                    تعديل المزرعة
+                  </Link>
+                )}
 
                 <Link href="/farms" className="btn-secondary">
                   رجوع للمزارع
