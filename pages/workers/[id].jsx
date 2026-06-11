@@ -17,6 +17,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const normalizeMovement = (value) => {
   const text = String(value || "").trim();
@@ -72,6 +73,7 @@ const getWorkerVehiclesFromCache = (workerId) => {
 export default function WorkerDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [worker, setWorker] = useState(null);
   const [assets, setAssets] = useState([]);
@@ -249,9 +251,14 @@ export default function WorkerDetails() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link href={`/workers/edit/${worker.id}`} className="btn-primary">
-                  تعديل العامل
-                </Link>
+                {canManage && (
+                  <Link
+                    href={`/workers/edit/${worker.id}`}
+                    className="btn-primary"
+                  >
+                    تعديل العامل
+                  </Link>
+                )}
 
                 <Link href="/workers" className="btn-secondary">
                   رجوع للعمال
@@ -270,7 +277,7 @@ export default function WorkerDetails() {
                     assets.map((asset) => (
                       <Link
                         key={asset.id}
-                        href={`/assets/edit/${asset.id}`}
+                        href={`/assets/${asset.id}`}
                         className="rounded-2xl border border-slate-100 p-4 hover:bg-slate-50"
                       >
                         <b>{asset.name || "-"}</b>
