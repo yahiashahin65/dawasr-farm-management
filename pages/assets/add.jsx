@@ -23,6 +23,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const categories = [
   { value: "asset", label: "معدة" },
@@ -48,6 +50,7 @@ const addMovementToCache = (movement) => {
 
 export default function AddAsset() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [workers, setWorkers] = useState([]);
   const [farms, setFarms] = useState([]);
@@ -77,6 +80,14 @@ export default function AddAsset() {
   });
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/assets");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const loadData = async () => {
       try {
         const [workersSnap, farmsSnap, kubrasSnap, typesSnap, settings] =
@@ -120,7 +131,7 @@ export default function AddAsset() {
     };
 
     loadData();
-  }, []);
+  }, [loadingRole, canManage]);
 
   useEffect(() => {
     if (!image) {
@@ -160,6 +171,7 @@ export default function AddAsset() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     if (!form.name.trim() || !form.assetTypeId) {
@@ -190,7 +202,6 @@ export default function AddAsset() {
         : places.find((item) => item.id === form.placeId);
 
       const placeId = isExternalWorkshop ? "" : form.placeId;
-
       const placeType = isExternalWorkshop
         ? "external_workshop"
         : form.placeType;
@@ -210,62 +221,45 @@ export default function AddAsset() {
       const assetPayload = {
         name: form.name.trim(),
         code: form.code.trim(),
-
         category: form.category,
-
         assetTypeId: form.assetTypeId,
         assetTypeName: type?.name || "",
-
         status: isExternalWorkshop ? "في الورشة" : form.status,
-
         placeType,
         placeId,
         placeName,
-
         currentPlace: {
           type: placeType,
           id: placeId,
           name: placeName,
         },
-
         farmId: placeType === "farm" ? form.placeId : "",
         farmName: placeType === "farm" ? placeName : "",
-
         kubraId: placeType === "kubra" ? form.placeId : "",
         kubraName: placeType === "kubra" ? placeName : "",
-
         externalWorkshopName:
           placeType === "external_workshop" ? placeName : "",
-
         workerIds: form.workerIds,
-
         workers: selectedWorkers.map((worker) => ({
           id: worker.id,
           name: worker.name,
           phone: worker.phone || "",
         })),
-
         workerNames: selectedWorkers.map((worker) => worker.name).join("، "),
-
         imageUrl,
         notes: form.notes.trim(),
       };
 
       const movementPayload = {
         assetName: form.name.trim(),
-
         movementType: "created",
-
         fromPlaceType: "",
         fromPlaceName: "",
-
         toPlaceType: placeType,
         toPlaceId: placeId,
         toPlaceName: placeName,
-
         status: assetPayload.status,
         category: form.category,
-
         reason: "تسجيل أول مكان للأصل",
         notes: form.notes.trim(),
       };
@@ -453,6 +447,20 @@ export default function AddAsset() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة أصل">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة الأصل"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
