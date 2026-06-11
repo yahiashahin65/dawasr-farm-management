@@ -8,6 +8,7 @@ import { subscribeCachedCollection } from "../../lib/realtimeCache";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const statusLabel = (status) => {
   if (status === "in_workshop") return "في الورشة";
@@ -20,6 +21,7 @@ const statusLabel = (status) => {
 export default function VehicleDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [vehicle, setVehicle] = useState(null);
   const [maintenance, setMaintenance] = useState([]);
@@ -73,12 +75,14 @@ export default function VehicleDetails() {
                   </p>
                 </div>
 
-                <Link
-                  href={`/vehicles/edit/${vehicle.id}`}
-                  className="btn-secondary w-full sm:w-auto"
-                >
-                  تعديل السيارة
-                </Link>
+                {canManage && (
+                  <Link
+                    href={`/vehicles/edit/${vehicle.id}`}
+                    className="btn-secondary w-full sm:w-auto"
+                  >
+                    تعديل السيارة
+                  </Link>
+                )}
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -97,8 +101,7 @@ export default function VehicleDetails() {
                 </p>
 
                 <p>
-                  <b>المكان / المزرعة:</b>{" "}
-                  {vehicle.farmName || "غير محدد"}
+                  <b>المكان / المزرعة:</b> {vehicle.farmName || "غير محدد"}
                 </p>
 
                 <p>
