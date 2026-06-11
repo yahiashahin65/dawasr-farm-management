@@ -11,6 +11,8 @@ import {
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
+import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -22,6 +24,7 @@ const addFarmToCache = (farm) => {
 
 export default function AddFarm() {
   const router = useRouter();
+  const { canManage, loadingRole } = useUserRole();
 
   const [engineers, setEngineers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -34,6 +37,14 @@ export default function AddFarm() {
   });
 
   useEffect(() => {
+    if (!loadingRole && !canManage) {
+      router.replace("/farms");
+    }
+  }, [loadingRole, canManage, router]);
+
+  useEffect(() => {
+    if (loadingRole || !canManage) return;
+
     const loadEngineers = async () => {
       try {
         const snap = await getDocs(collection(db, "engineers"));
@@ -44,7 +55,7 @@ export default function AddFarm() {
     };
 
     loadEngineers();
-  }, []);
+  }, [loadingRole, canManage]);
 
   const toggle = (id) => {
     setForm((prev) => ({
@@ -58,6 +69,7 @@ export default function AddFarm() {
   const submit = async (e) => {
     e.preventDefault();
 
+    if (!canManage) return;
     if (loading) return;
 
     if (!form.name.trim()) {
@@ -157,6 +169,20 @@ export default function AddFarm() {
       setLoading(false);
     }
   };
+
+  if (loadingRole || !canManage) {
+    return (
+      <ProtectedRoute>
+        <Layout title="إضافة مزرعة">
+          <AppLoader
+            variant="compact"
+            title="جاري التحقق من الصلاحيات..."
+            subtitle="يتم التأكد من صلاحية إضافة مزرعة"
+          />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
 
   return (
     <ProtectedRoute>
