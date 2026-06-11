@@ -17,6 +17,7 @@ import { isOnline } from "../../lib/offlineQueue";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
+import useUserRole from "../../hooks/useUserRole";
 
 const getEngineerFromCache = (engineerId) => {
   const cached = getCachedCollection("cache:engineers");
@@ -54,6 +55,7 @@ const vehicleStatusLabel = (status) => {
 export default function EngineerDetails() {
   const router = useRouter();
   const { id } = router.query;
+  const { canManage } = useUserRole();
 
   const [engineer, setEngineer] = useState(null);
   const [farms, setFarms] = useState([]);
@@ -197,12 +199,14 @@ export default function EngineerDetails() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link
-                  href={`/engineers/edit/${engineer.id}`}
-                  className="btn-primary"
-                >
-                  تعديل المهندس
-                </Link>
+                {canManage && (
+                  <Link
+                    href={`/engineers/edit/${engineer.id}`}
+                    className="btn-primary"
+                  >
+                    تعديل المهندس
+                  </Link>
+                )}
 
                 <Link href="/engineers" className="btn-secondary">
                   رجوع للمهندسين
@@ -275,4 +279,4 @@ export default function EngineerDetails() {
       </Layout>
     </ProtectedRoute>
   );
-    }
+}
