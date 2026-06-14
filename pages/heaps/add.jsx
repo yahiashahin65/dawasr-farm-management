@@ -26,6 +26,8 @@ import useUserRole from "../../hooks/useUserRole";
 
 const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
 
+const HEAP_DRAFT_KEY = "heap:add:draft";
+
 const createLocalId = () =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -50,9 +52,28 @@ export default function AddHeapPage() {
     farmId: "",
     cropType: "غير معلوم",
     sprinklerName: "",
+    carsCount: 0,
+    bricksPerCar: "",
+    lastCarExtra: "",
     bricksCount: "",
     notes: "",
   });
+
+  useEffect(() => {
+    const saved = localStorage.getItem(HEAP_DRAFT_KEY);
+
+    if (saved) {
+      try {
+        setForm((prev) => ({ ...prev, ...JSON.parse(saved) }));
+      } catch {
+        localStorage.removeItem(HEAP_DRAFT_KEY);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(HEAP_DRAFT_KEY, JSON.stringify(form));
+  }, [form]);
 
   useEffect(() => {
     if (!loadingRole && !canManage) {
@@ -115,6 +136,41 @@ export default function AddHeapPage() {
     );
   }, [cropOptions, form.cropType]);
 
+  const calculateBricksCount = (carsCount, bricksPerCar, lastCarExtra) =>
+    Number(carsCount || 0) * Number(bricksPerCar || 0) +
+    Number(lastCarExtra || 0);
+
+  const updateHeapCounter = (nextForm) => {
+    const total = calculateBricksCount(
+      nextForm.carsCount,
+      nextForm.bricksPerCar,
+      nextForm.lastCarExtra
+    );
+
+    return {
+      ...nextForm,
+      bricksCount: total ? String(total) : "",
+    };
+  };
+
+  const incrementCars = () => {
+    setForm((prev) =>
+      updateHeapCounter({
+        ...prev,
+        carsCount: Number(prev.carsCount || 0) + 1,
+      })
+    );
+  };
+
+  const decrementCars = () => {
+    setForm((prev) =>
+      updateHeapCounter({
+        ...prev,
+        carsCount: Math.max(0, Number(prev.carsCount || 0) - 1),
+      })
+    );
+  };
+
   const uploadImage = async () => {
     if (!image) return "";
 
@@ -159,6 +215,9 @@ export default function AddHeapPage() {
         cropType: form.cropType || "غير معلوم",
         sprinklerName: form.sprinklerName.trim(),
         bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
+        carsCount: Number(form.carsCount || 0),
+        bricksPerCar: form.bricksPerCar ? Number(form.bricksPerCar) : null,
+        lastCarExtra: form.lastCarExtra ? Number(form.lastCarExtra) : 0,
         notes: form.notes.trim(),
       };
 
@@ -191,6 +250,8 @@ export default function AddHeapPage() {
           },
         });
 
+        localStorage.removeItem(HEAP_DRAFT_KEY);
+
         alert("تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
         router.push("/heaps");
         return;
@@ -204,6 +265,8 @@ export default function AddHeapPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      localStorage.removeItem(HEAP_DRAFT_KEY);
 
       router.push("/heaps");
     } catch (error) {
@@ -219,6 +282,9 @@ export default function AddHeapPage() {
         cropType: form.cropType || "غير معلوم",
         sprinklerName: form.sprinklerName.trim(),
         bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
+        carsCount: Number(form.carsCount || 0),
+        bricksPerCar: form.bricksPerCar ? Number(form.bricksPerCar) : null,
+        lastCarExtra: form.lastCarExtra ? Number(form.lastCarExtra) : 0,
         imageUrl: "",
         notes: form.notes.trim(),
       };
@@ -246,6 +312,8 @@ export default function AddHeapPage() {
           name: fallbackPayload.pileName,
         },
       });
+
+      localStorage.removeItem(HEAP_DRAFT_KEY);
 
       alert("تعذر الاتصال، تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
       router.push("/heaps");
@@ -315,14 +383,87 @@ export default function AddHeapPage() {
               }
             />
 
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <label className="block text-sm font-bold text-slate-700">
+                عداد العربيات المحملة
+              </label>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="btn-secondary px-5 text-xl"
+                  onClick={decrementCars}
+                >
+                  -
+                </button>
+
+                <input
+                  className="form-input text-center text-xl font-bold"
+                  type="number"
+                  min="0"
+                  value={form.carsCount}
+                  onChange={(e) =>
+                    setForm((prev) =>
+                      updateHeapCounter({
+                        ...prev,
+                        carsCount: Math.max(0, Number(e.target.value || 0)),
+                      })
+                    )
+                  }
+                />
+
+                <button
+                  type="button"
+                  className="btn-primary px-5 text-xl"
+                  onClick={incrementCars}
+                >
+                  +
+                </button>
+              </div>
+
+              <p className="text-xs font-bold text-slate-500">
+                الرقم بيتحفظ تلقائيًا حتى لو الصفحة اتقفلت أو النت فصل.
+              </p>
+            </div>
+
             <input
               className="form-input"
               type="number"
-              placeholder="عدد اللبن اختياري، مثال: 2000"
-              value={form.bricksCount}
+              min="0"
+              placeholder="قيمة العربية الواحدة، مثال: 50 أو 52"
+              value={form.bricksPerCar}
               onChange={(e) =>
-                setForm({ ...form, bricksCount: e.target.value })
+                setForm((prev) =>
+                  updateHeapCounter({
+                    ...prev,
+                    bricksPerCar: e.target.value,
+                  })
+                )
               }
+            />
+
+            <input
+              className="form-input"
+              type="number"
+              min="0"
+              placeholder="زيادة آخر عربية، مثال: 10"
+              value={form.lastCarExtra}
+              onChange={(e) =>
+                setForm((prev) =>
+                  updateHeapCounter({
+                    ...prev,
+                    lastCarExtra: e.target.value,
+                  })
+                )
+              }
+            />
+
+            <input
+              className="form-input bg-slate-100 font-bold"
+              type="number"
+              placeholder="إجمالي عدد اللبن"
+              value={form.bricksCount}
+              readOnly
             />
           </div>
 
