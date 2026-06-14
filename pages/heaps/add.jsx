@@ -420,10 +420,6 @@ export default function AddHeapPage() {
                   +
                 </button>
               </div>
-
-              <p className="text-xs font-bold text-slate-500">
-                الرقم بيتحفظ تلقائيًا حتى لو الصفحة اتقفلت أو النت فصل.
-              </p>
             </div>
 
             <input
