@@ -29,6 +29,8 @@ import {
   faTableCells,
   faTableList,
   faBroom,
+  faFilePdf,
+  faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
@@ -48,6 +50,490 @@ const removeAssetFromCache = (assetId) => {
     "cache:assets",
     cached.filter((item) => item.id !== assetId)
   );
+};
+
+const escapeHtml = (value) => {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+const normalizeReportText = (value) => {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[ـ]/g, "")
+    .replace(/[-_/\\.,،()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const hasAnyReportKeyword = (text, keywords) => {
+  const normalizedText = normalizeReportText(text);
+
+  return keywords.some((keyword) =>
+    normalizedText.includes(normalizeReportText(keyword))
+  );
+};
+
+const getReportSearchText = (asset) => {
+  return normalizeReportText(`
+    ${asset.name || ""}
+    ${asset.assetName || ""}
+    ${getAssetTypeName(asset) || ""}
+    ${asset.assetTypeName || ""}
+    ${asset.typeName || ""}
+    ${asset.code || ""}
+  `);
+};
+
+const ASSETS_REPORT_ORDER = [
+  {
+    number: 1,
+    title: "الحراثات",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "حراثة",
+        "حراثات",
+        "جندير",
+        "جون دير",
+        "نيو هولاند",
+        "نيوهولاند",
+        "فيات",
+        "فنت",
+        "كابوتا",
+        "يانمار",
+        "ينمر",
+      ]),
+  },
+  {
+    number: 2,
+    title: "باكتات الحراثات",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "باكت",
+        "باكتات",
+        "بكت حراثة",
+        "بكت حراثات",
+        "عمدان باكت",
+      ]),
+  },
+  {
+    number: 3,
+    title: "المقطورات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["مقطورة", "مقطورات", "مقطوره", "مقطورات"]),
+  },
+  {
+    number: 4,
+    title: "لبانة ولجر 630",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "لبانه",
+        "لبانة",
+        "لجر630",
+        "لجر 630",
+        "لجر",
+      ]),
+  },
+  {
+    number: 5,
+    title: "المرشات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["مرشة", "مرشات", "مرشه", "مرش"]),
+  },
+  {
+    number: 6,
+    title: "الدسك",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["دسك", "ديسك", "ديسكات"]),
+  },
+  {
+    number: 7,
+    title: "النثارات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["نثارة", "نثارات", "نثاره"]),
+  },
+  {
+    number: 8,
+    title: "المشط",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["مشط", "امشاط", "أمشاط"]),
+  },
+  {
+    number: 9,
+    title: "البذارات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["بذارة", "بذارات", "بذاره"]),
+  },
+  {
+    number: 10,
+    title: "اللمامات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["لمامة", "لمامات", "لمامه"]),
+  },
+  {
+    number: 11,
+    title: "الدريل",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["دريل", "دريلات"]),
+  },
+  {
+    number: 12,
+    title: "المساح",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["مساح", "مساحات"]),
+  },
+  {
+    number: 13,
+    title: "الفجاج",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["فجاج", "فجاجات"]),
+  },
+  {
+    number: 14,
+    title: "اللقطات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["لقاطة", "لقاطه", "لقطات", "لقاط"]),
+  },
+  {
+    number: 15,
+    title: "الحصادات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["حصادة", "حصادات", "حصاده"]),
+  },
+  {
+    number: 16,
+    title: "البابكت",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["بابكت", "بوبكات", "بوب كات"]),
+  },
+  {
+    number: 17,
+    title: "تريلات LB",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "تريلا lb",
+        "تريلات lb",
+        "تريله lb",
+        "lb تريلا",
+        "lb",
+      ]),
+  },
+  {
+    number: 18,
+    title: "اللوبد",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["لوبد", "لوبدات", "لوبد"]),
+  },
+  {
+    number: 19,
+    title: "القلابات",
+    match: (text) => {
+      const normalized = normalizeReportText(text);
+
+      return (
+        hasAnyReportKeyword(normalized, ["قلاب", "قلابات"]) &&
+        !hasAnyReportKeyword(normalized, [
+          "قلاب 6",
+          "قلابات 6",
+          "قلاب ست",
+          "قلاب سته",
+        ])
+      );
+    },
+  },
+  {
+    number: 20,
+    title: "خزانات مياه للتريلات",
+    match: (text) => {
+      const normalized = normalizeReportText(text);
+
+      return (
+        hasAnyReportKeyword(normalized, ["خزان", "خزانات"]) &&
+        hasAnyReportKeyword(normalized, [
+          "تريلا",
+          "تريلات",
+          "تريلار",
+          "تريلر",
+        ])
+      );
+    },
+  },
+  {
+    number: 21,
+    title: "قلابات 6",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "قلاب 6",
+        "قلابات 6",
+        "قلاب ست",
+        "قلاب سته",
+      ]),
+  },
+  {
+    number: 22,
+    title: "وايتات المزارع",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["وايت", "وايتات", "وايت ماء"]),
+  },
+  {
+    number: 23,
+    title: "الشيوال",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["شيوال", "شيول", "شياول"]),
+  },
+  {
+    number: 24,
+    title: "الرصاصات",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["رصاصة", "رصاصه", "رصاصات", "رولر"]),
+  },
+  {
+    number: 25,
+    title: "بوكلين هونداي",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "بوكلين",
+        "بوكلين هونداي",
+        "حفار هونداي",
+        "حفار هيونداي",
+      ]),
+  },
+  {
+    number: 26,
+    title: "الرافعة",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["رافعة", "رافعه", "رافعات"]),
+  },
+  {
+    number: 27,
+    title: "الجريدر",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["جريدر", "قريدر", "جريدرات"]),
+  },
+  {
+    number: 28,
+    title: "البلدوزر",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["بلدوزر", "بلدوزرات"]),
+  },
+  {
+    number: 29,
+    title: "الجير",
+    match: (text) =>
+      hasAnyReportKeyword(text, ["جير", "الجير"]),
+  },
+  {
+    number: 30,
+    title: "مولدات الكهرباء والمياه",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "مولد",
+        "مولدات",
+        "مولد كهرباء",
+        "مولد مياه",
+      ]),
+  },
+  {
+    number: 31,
+    title: "مكاين كاتربلر",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "كاتربلر",
+        "كاتر بلر",
+        "كاتربيلر",
+        "مكينة كاتربلر",
+        "مكاين كاتربلر",
+      ]),
+  },
+  {
+    number: 32,
+    title: "مضخات المياه ومستلزمات مكاين البير",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "مضخة",
+        "مضخات",
+        "مضخه",
+        "طرمبة ماء",
+        "طرمبه ماء",
+        "مكينة بير",
+        "مكينه بير",
+        "مكاين البير",
+        "مكاين بير",
+        "قطع غيار مكاين البير",
+        "قطع غيار مكينة بير",
+        "صندوق عداد",
+        "عداد بير",
+      ]),
+  },
+  {
+    number: 33,
+    title: "الكمبروسر",
+    match: (text) =>
+      hasAnyReportKeyword(text, [
+        "كمبروسر",
+        "كمبروسور",
+        "كمبرسر",
+        "ضاغط هواء",
+      ]),
+  },
+  {
+    number: 34,
+    title: "خزانات المياه",
+    match: (text) => {
+      const normalized = normalizeReportText(text);
+
+      return (
+        hasAnyReportKeyword(normalized, [
+          "خزان مياه",
+          "خزانات مياه",
+          "خزان ماء",
+          "خزانات ماء",
+          "خزان",
+        ]) &&
+        !hasAnyReportKeyword(normalized, [
+          "تريلا",
+          "تريلات",
+          "تريلار",
+          "تريلر",
+        ])
+      );
+    },
+  },
+];
+
+const getTractorOrder = (asset) => {
+  const text = getReportSearchText(asset);
+
+  if (
+    hasAnyReportKeyword(text, [
+      "8 كفر",
+      "8كفر",
+      "ثمان كفر",
+      "ثمانية كفر",
+    ])
+  ) {
+    return 1;
+  }
+
+  if (
+    hasAnyReportKeyword(text, [
+      "6 كفر",
+      "6كفر",
+      "ست كفر",
+      "سته كفر",
+      "ستة كفر",
+    ])
+  ) {
+    return 2;
+  }
+
+  if (
+    hasAnyReportKeyword(text, [
+      "4 كفر",
+      "4كفر",
+      "اربع كفر",
+      "أربع كفر",
+      "اربعة كفر",
+    ])
+  ) {
+    return 3;
+  }
+
+  return 4;
+};
+
+const sortReportAssets = (assets, sectionNumber) => {
+  return assets.slice().sort((a, b) => {
+    if (sectionNumber === 1) {
+      const tractorOrderA = getTractorOrder(a);
+      const tractorOrderB = getTractorOrder(b);
+
+      if (tractorOrderA !== tractorOrderB) {
+        return tractorOrderA - tractorOrderB;
+      }
+    }
+
+    const typeCompare = String(getAssetTypeName(a) || "").localeCompare(
+      String(getAssetTypeName(b) || ""),
+      "ar",
+      {
+        numeric: true,
+        sensitivity: "base",
+      }
+    );
+
+    if (typeCompare !== 0) return typeCompare;
+
+    return String(a.name || "").localeCompare(String(b.name || ""), "ar", {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+};
+
+const groupAssetsForReport = (assets) => {
+  const allowedCategories = new Set(["asset", "spare_part", "tool"]);
+
+  const reportAssets = assets.filter((asset) =>
+    allowedCategories.has(asset.category || "asset")
+  );
+
+  const assignedIds = new Set();
+
+  const sections = ASSETS_REPORT_ORDER.map((section) => {
+    const sectionAssets = reportAssets.filter((asset) => {
+      if (assignedIds.has(asset.id)) return false;
+
+      const searchText = getReportSearchText(asset);
+
+      if (!section.match(searchText)) return false;
+
+      assignedIds.add(asset.id);
+      return true;
+    });
+
+    return {
+      ...section,
+      assets: sortReportAssets(sectionAssets, section.number),
+    };
+  });
+
+  const unmatchedAssets = reportAssets
+    .filter((asset) => !assignedIds.has(asset.id))
+    .sort((a, b) => {
+      const typeCompare = String(getAssetTypeName(a) || "").localeCompare(
+        String(getAssetTypeName(b) || ""),
+        "ar",
+        {
+          numeric: true,
+          sensitivity: "base",
+        }
+      );
+
+      if (typeCompare !== 0) return typeCompare;
+
+      return String(a.name || "").localeCompare(String(b.name || ""), "ar", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+
+  return {
+    sections,
+    unmatchedAssets,
+    reportAssets,
+  };
 };
 
 export default function Assets() {
@@ -79,6 +565,7 @@ export default function Assets() {
   const [search, setSearch] = useState("");
   const [preview, setPreview] = useState(null);
   const [view, setView] = useState("table");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
     const unsubscribeAssets = subscribeCachedCollection({
@@ -307,7 +794,764 @@ export default function Assets() {
         },
       });
 
-      alert("تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال");
+      alert(
+        "تعذر الاتصال، تم حفظ عملية الحذف وسيتم تنفيذها عند عودة الاتصال"
+      );
+    }
+  };
+
+  const categoryLabel = (category) => {
+    if (category === "spare_part") return "قطعة غيار";
+    if (category === "tool") return "أداة";
+    if (category === "material") return "مواد";
+    return "معدة";
+  };
+
+  const exportAllAssetsToPdf = async () => {
+    if (isExportingPdf) return;
+
+    if (!allItems.length) {
+      alert("لا توجد أصول لتصديرها");
+      return;
+    }
+
+    const { sections, unmatchedAssets, reportAssets } =
+      groupAssetsForReport(allItems);
+
+    if (!reportAssets.length) {
+      alert("لا توجد معدات أو قطع غيار أو أدوات لتصديرها");
+      return;
+    }
+
+    setIsExportingPdf(true);
+
+    let reportContainer = null;
+
+    try {
+      const [{ default: jsPDF }, { default: html2canvas }] =
+        await Promise.all([import("jspdf"), import("html2canvas")]);
+
+      const generatedAt = new Intl.DateTimeFormat("ar-EG", {
+        dateStyle: "full",
+        timeStyle: "short",
+      }).format(new Date());
+
+      const equipmentCount = reportAssets.filter(
+        (asset) => (asset.category || "asset") === "asset"
+      ).length;
+
+      const sparePartsCount = reportAssets.filter(
+        (asset) => asset.category === "spare_part"
+      ).length;
+
+      const toolsCount = reportAssets.filter(
+        (asset) => asset.category === "tool"
+      ).length;
+
+      reportContainer = document.createElement("div");
+      reportContainer.setAttribute("dir", "rtl");
+
+      reportContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        right: -100000px;
+        width: 1120px;
+        box-sizing: border-box;
+        direction: rtl;
+        background: #ffffff;
+        color: #0f172a;
+        font-family: Tahoma, Arial, sans-serif;
+        line-height: 1.6;
+      `;
+
+      const createBlock = (html, extraStyles = "") => {
+        const block = document.createElement("section");
+
+        block.className = "pdf-report-block";
+
+        block.style.cssText = `
+          width: 1120px;
+          padding: 0 38px;
+          box-sizing: border-box;
+          background: #ffffff;
+          ${extraStyles}
+        `;
+
+        block.innerHTML = html;
+
+        return block;
+      };
+
+      const renderAssetTable = (assets) => {
+        if (!assets.length) {
+          return `
+            <div
+              style="
+                padding: 18px;
+                text-align: center;
+                color: #64748b;
+                font-size: 14px;
+                font-weight: 800;
+                background: #f8fafc;
+                border-top: 1px solid #e2e8f0;
+              "
+            >
+              لا توجد بيانات مسجلة حاليًا تحت هذا البند
+            </div>
+          `;
+        }
+
+        const rows = assets
+          .map(
+            (asset, index) => `
+              <tr>
+                <td>${index + 1}</td>
+
+                <td style="font-weight: 900;">
+                  ${escapeHtml(asset.name || asset.assetName || "-")}
+                </td>
+
+                <td>
+                  ${escapeHtml(categoryLabel(asset.category))}
+                </td>
+
+                <td style="font-weight: 800;">
+                  ${escapeHtml(getAssetTypeName(asset) || "-")}
+                </td>
+
+                <td>
+                  ${escapeHtml(asset.code || "-")}
+                </td>
+
+                <td>
+                  <div style="font-weight: 800;">
+                    ${escapeHtml(getPlaceName(asset) || "-")}
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 2px;
+                      color: #64748b;
+                      font-size: 10px;
+                    "
+                  >
+                    ${escapeHtml(
+                      getPlaceTypeLabel(asset.placeType) || ""
+                    )}
+                  </div>
+                </td>
+
+                <td>
+                  ${escapeHtml(asset.workerNames || "-")}
+                </td>
+
+                <td style="font-weight: 800;">
+                  ${escapeHtml(asset.status || "-")}
+                </td>
+              </tr>
+            `
+          )
+          .join("");
+
+        return `
+          <div style="overflow: hidden;">
+            <table
+              style="
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                font-size: 11px;
+              "
+            >
+              <thead>
+                <tr style="background: #f1f5f9;">
+                  <th style="width: 4%;">م</th>
+                  <th style="width: 16%;">اسم الأصل</th>
+                  <th style="width: 10%;">التصنيف</th>
+                  <th style="width: 16%;">نوع الأصل</th>
+                  <th style="width: 10%;">الكود</th>
+                  <th style="width: 17%;">المكان الحالي</th>
+                  <th style="width: 17%;">العمال</th>
+                  <th style="width: 10%;">الحالة</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      };
+
+      reportContainer.appendChild(
+        createBlock(`
+          <div
+            style="
+              padding-top: 42px;
+              padding-bottom: 24px;
+              border-bottom: 3px solid #15803d;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 24px;
+              "
+            >
+              <div>
+                <div
+                  style="
+                    color: #15803d;
+                    font-size: 14px;
+                    font-weight: 900;
+                  "
+                >
+                  إدارة المزرعة
+                </div>
+
+                <h1
+                  style="
+                    margin: 5px 0 0;
+                    color: #0f172a;
+                    font-size: 32px;
+                    font-weight: 900;
+                  "
+                >
+                  تقرير المعدات والأدوات وقطع الغيار
+                </h1>
+
+                <p
+                  style="
+                    margin: 7px 0 0;
+                    color: #64748b;
+                    font-size: 14px;
+                    font-weight: 700;
+                  "
+                >
+                  البيانات الحالية المسجلة في النظام مرتبة حسب شيت معدات مزارع السنبلة
+                </p>
+              </div>
+
+              <div
+                style="
+                  padding: 12px 15px;
+                  border: 1px solid #dbe7df;
+                  border-radius: 12px;
+                  background: #f8fafc;
+                  min-width: 220px;
+                "
+              >
+                <div
+                  style="
+                    color: #64748b;
+                    font-size: 12px;
+                    font-weight: 700;
+                  "
+                >
+                  تاريخ إصدار التقرير
+                </div>
+
+                <div
+                  style="
+                    margin-top: 4px;
+                    font-size: 14px;
+                    font-weight: 900;
+                  "
+                >
+                  ${escapeHtml(generatedAt)}
+                </div>
+              </div>
+            </div>
+
+            <div
+              style="
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 12px;
+                margin-top: 24px;
+              "
+            >
+              <div
+                style="
+                  padding: 14px;
+                  border-radius: 12px;
+                  background: #15803d;
+                  color: #ffffff;
+                "
+              >
+                <div style="font-size: 12px; font-weight: 700; opacity: .85;">
+                  إجمالي التقرير
+                </div>
+
+                <div style="margin-top: 3px; font-size: 25px; font-weight: 900;">
+                  ${reportAssets.length}
+                </div>
+              </div>
+
+              <div
+                style="
+                  padding: 14px;
+                  border: 1px solid #dbe7df;
+                  border-radius: 12px;
+                  background: #f8fafc;
+                "
+              >
+                <div style="color: #64748b; font-size: 12px; font-weight: 700;">
+                  معدات
+                </div>
+
+                <div style="margin-top: 3px; font-size: 25px; font-weight: 900;">
+                  ${equipmentCount}
+                </div>
+              </div>
+
+              <div
+                style="
+                  padding: 14px;
+                  border: 1px solid #dbe7df;
+                  border-radius: 12px;
+                  background: #f8fafc;
+                "
+              >
+                <div style="color: #64748b; font-size: 12px; font-weight: 700;">
+                  قطع غيار
+                </div>
+
+                <div style="margin-top: 3px; font-size: 25px; font-weight: 900;">
+                  ${sparePartsCount}
+                </div>
+              </div>
+
+              <div
+                style="
+                  padding: 14px;
+                  border: 1px solid #dbe7df;
+                  border-radius: 12px;
+                  background: #f8fafc;
+                "
+              >
+                <div style="color: #64748b; font-size: 12px; font-weight: 700;">
+                  أدوات
+                </div>
+
+                <div style="margin-top: 3px; font-size: 25px; font-weight: 900;">
+                  ${toolsCount}
+                </div>
+              </div>
+            </div>
+          </div>
+        `)
+      );
+
+      const section34 = sections.find((section) => section.number === 34);
+
+      sections
+        .filter((section) => section.number !== 34)
+        .forEach((section) => {
+          reportContainer.appendChild(
+            createBlock(`
+              <div
+                style="
+                  margin-top: 22px;
+                  border: 1px solid #dbe7df;
+                  border-radius: 14px;
+                  overflow: hidden;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    padding: 14px 18px;
+                    background: #eaf8ef;
+                    border-bottom: 1px solid #d7eadc;
+                  "
+                >
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 12px;
+                    "
+                  >
+                    <div
+                      style="
+                        width: 42px;
+                        height: 42px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 10px;
+                        color: #ffffff;
+                        background: #15803d;
+                        font-size: 18px;
+                        font-weight: 900;
+                      "
+                    >
+                      ${section.number}
+                    </div>
+
+                    <div>
+                      <div
+                        style="
+                          color: #15803d;
+                          font-size: 11px;
+                          font-weight: 800;
+                        "
+                      >
+                        البند رقم ${section.number}
+                      </div>
+
+                      <div
+                        style="
+                          margin-top: 2px;
+                          color: #0f172a;
+                          font-size: 20px;
+                          font-weight: 900;
+                        "
+                      >
+                        ${escapeHtml(section.title)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style="
+                      min-width: 105px;
+                      padding: 8px 12px;
+                      border-radius: 10px;
+                      background: #ffffff;
+                      text-align: center;
+                    "
+                  >
+                    <div
+                      style="
+                        color: #64748b;
+                        font-size: 10px;
+                        font-weight: 700;
+                      "
+                    >
+                      العدد الحالي
+                    </div>
+
+                    <div
+                      style="
+                        margin-top: 2px;
+                        color: #0f172a;
+                        font-size: 20px;
+                        font-weight: 900;
+                      "
+                    >
+                      ${section.assets.length}
+                    </div>
+                  </div>
+                </div>
+
+                ${renderAssetTable(section.assets)}
+              </div>
+            `)
+          );
+        });
+
+      if (unmatchedAssets.length) {
+        reportContainer.appendChild(
+          createBlock(`
+            <div
+              style="
+                margin-top: 22px;
+                border: 1px solid #f59e0b;
+                border-radius: 14px;
+                overflow: hidden;
+              "
+            >
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  gap: 16px;
+                  padding: 14px 18px;
+                  background: #fffbeb;
+                  border-bottom: 1px solid #fde68a;
+                "
+              >
+                <div>
+                  <div
+                    style="
+                      color: #b45309;
+                      font-size: 11px;
+                      font-weight: 800;
+                    "
+                  >
+                    بيانات حالية غير موجودة في ترتيب الشيت القديم
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 2px;
+                      color: #0f172a;
+                      font-size: 20px;
+                      font-weight: 900;
+                    "
+                  >
+                    أصول أخرى
+                  </div>
+                </div>
+
+                <div
+                  style="
+                    min-width: 105px;
+                    padding: 8px 12px;
+                    border-radius: 10px;
+                    background: #ffffff;
+                    text-align: center;
+                  "
+                >
+                  <div
+                    style="
+                      color: #64748b;
+                      font-size: 10px;
+                      font-weight: 700;
+                    "
+                  >
+                    العدد الحالي
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 2px;
+                      color: #0f172a;
+                      font-size: 20px;
+                      font-weight: 900;
+                    "
+                  >
+                    ${unmatchedAssets.length}
+                  </div>
+                </div>
+              </div>
+
+              ${renderAssetTable(unmatchedAssets)}
+            </div>
+          `)
+        );
+      }
+
+      if (section34) {
+        reportContainer.appendChild(
+          createBlock(`
+            <div
+              style="
+                margin-top: 22px;
+                margin-bottom: 42px;
+                border: 2px solid #15803d;
+                border-radius: 14px;
+                overflow: hidden;
+              "
+            >
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  gap: 16px;
+                  padding: 14px 18px;
+                  color: #ffffff;
+                  background: #15803d;
+                  border-bottom: 1px solid #166534;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                  "
+                >
+                  <div
+                    style="
+                      width: 42px;
+                      height: 42px;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      border-radius: 10px;
+                      color: #15803d;
+                      background: #ffffff;
+                      font-size: 18px;
+                      font-weight: 900;
+                    "
+                  >
+                    34
+                  </div>
+
+                  <div>
+                    <div
+                      style="
+                        font-size: 11px;
+                        font-weight: 800;
+                        opacity: .85;
+                      "
+                    >
+                      البند رقم 34 والأخير
+                    </div>
+
+                    <div
+                      style="
+                        margin-top: 2px;
+                        font-size: 21px;
+                        font-weight: 900;
+                      "
+                    >
+                      خزانات المياه
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style="
+                    min-width: 105px;
+                    padding: 8px 12px;
+                    border-radius: 10px;
+                    color: #0f172a;
+                    background: #ffffff;
+                    text-align: center;
+                  "
+                >
+                  <div
+                    style="
+                      color: #64748b;
+                      font-size: 10px;
+                      font-weight: 700;
+                    "
+                  >
+                    العدد الحالي
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 2px;
+                      font-size: 20px;
+                      font-weight: 900;
+                    "
+                  >
+                    ${section34.assets.length}
+                  </div>
+                </div>
+              </div>
+
+              ${renderAssetTable(section34.assets)}
+            </div>
+          `)
+        );
+      }
+
+      reportContainer.querySelectorAll("th").forEach((th) => {
+        th.style.cssText += `
+          padding: 9px 6px;
+          border: 1px solid #dbe3ea;
+          color: #334155;
+          font-weight: 900;
+          text-align: center;
+          vertical-align: middle;
+        `;
+      });
+
+      reportContainer.querySelectorAll("td").forEach((td) => {
+        td.style.cssText += `
+          padding: 8px 6px;
+          border: 1px solid #e2e8f0;
+          color: #0f172a;
+          text-align: center;
+          vertical-align: middle;
+          word-break: break-word;
+        `;
+      });
+
+      document.body.appendChild(reportContainer);
+
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const canvas = await html2canvas(reportContainer, {
+        scale: 1.5,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        windowWidth: 1120,
+      });
+
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      const imageData = canvas.toDataURL("image/jpeg", 0.95);
+
+      const imageWidth = pdfWidth;
+      const imageHeight = (canvas.height * imageWidth) / canvas.width;
+
+      let heightLeft = imageHeight;
+      let position = 0;
+
+      pdf.addImage(
+        imageData,
+        "JPEG",
+        0,
+        position,
+        imageWidth,
+        imageHeight,
+        undefined,
+        "FAST"
+      );
+
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position -= pdfHeight;
+
+        pdf.addPage();
+
+        pdf.addImage(
+          imageData,
+          "JPEG",
+          0,
+          position,
+          imageWidth,
+          imageHeight,
+          undefined,
+          "FAST"
+        );
+
+        heightLeft -= pdfHeight;
+      }
+
+      const fileDate = new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "_");
+
+      pdf.save(`assets_report_${fileDate}.pdf`);
+    } catch (error) {
+      console.error("PDF export error:", error);
+      alert("حدث خطأ أثناء إنشاء ملف PDF");
+    } finally {
+      if (reportContainer?.parentNode) {
+        reportContainer.parentNode.removeChild(reportContainer);
+      }
+
+      setIsExportingPdf(false);
     }
   };
 
@@ -321,14 +1565,24 @@ export default function Assets() {
       key: "status",
       value: "في الورشة",
     },
-    { label: "معدات", count: stats.equipment, key: "category", value: "asset" },
+    {
+      label: "معدات",
+      count: stats.equipment,
+      key: "category",
+      value: "asset",
+    },
     {
       label: "قطع غيار",
       count: stats.spareParts,
       key: "category",
       value: "spare_part",
     },
-    { label: "أدوات", count: stats.tools, key: "category", value: "tool" },
+    {
+      label: "أدوات",
+      count: stats.tools,
+      key: "category",
+      value: "tool",
+    },
     {
       label: "مواد",
       count: stats.materials,
@@ -358,13 +1612,6 @@ export default function Assets() {
   const isQuickActive = (q) => {
     if (!q.key) return !Object.values(filters).some(Boolean);
     return filters[q.key] === q.value;
-  };
-
-  const categoryLabel = (category) => {
-    if (category === "spare_part") return "قطعة غيار";
-    if (category === "tool") return "أداة";
-    if (category === "material") return "مواد";
-    return "معدة";
   };
 
   const isLoading = initialLoading || metaLoading;
@@ -404,6 +1651,19 @@ export default function Assets() {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={exportAllAssetsToPdf}
+                  disabled={isExportingPdf}
+                  className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FontAwesomeIcon
+                    icon={isExportingPdf ? faSpinner : faFilePdf}
+                    className={isExportingPdf ? "animate-spin" : ""}
+                  />
+
+                  {isExportingPdf ? "جاري إنشاء PDF..." : "تصدير PDF"}
+                </button>
+
                 <button onClick={clearFilters} className="btn-secondary">
                   <FontAwesomeIcon icon={faBroom} />
                   مسح الفلاتر
