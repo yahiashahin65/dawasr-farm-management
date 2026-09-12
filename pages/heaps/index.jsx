@@ -30,6 +30,12 @@ import useUserRole from "../../hooks/useUserRole";
 
 const PAGE_SIZE = 10;
 
+const BRICK_SIZE_OPTIONS = [
+  "لبنه مشروع",
+  "لبنه صغيره",
+  "غير معلوم",
+];
+
 const removeFromHeapsCache = (heapId) => {
   const cached = getCachedCollection("cache:heaps");
 
@@ -43,6 +49,18 @@ const normalizeText = (value, fallback = "غير محدد") => {
   const normalized = String(value ?? "").trim();
 
   return normalized || fallback;
+};
+
+const normalizeBrickSize = (value) => {
+  const normalized = String(value ?? "").trim();
+
+  if (!normalized) {
+    return "غير معلوم";
+  }
+
+  return BRICK_SIZE_OPTIONS.includes(normalized)
+    ? normalized
+    : "غير معلوم";
 };
 
 const escapeHtml = (value) => {
@@ -78,11 +96,136 @@ const formatNumber = (value) => {
   return Number(value || 0).toLocaleString("ar-EG");
 };
 
+/**
+ * تحويل createdAt لأي قيمه زمنيه يمكن مقارنتها
+ *
+ * يدعم:
+ * - Firestore Timestamp
+ * - Timestamp serialized object
+ * - Date
+ * - ISO string
+ * - number
+ */
+const getTimestampValue = (value) => {
+  if (!value) {
+    return 0;
+  }
+
+  try {
+    if (typeof value?.toDate === "function") {
+      const date = value.toDate();
+
+      return date instanceof Date && !Number.isNaN(date.getTime())
+        ? date.getTime()
+        : 0;
+    }
+
+    if (typeof value?.seconds === "number") {
+      return (
+        value.seconds * 1000 +
+        Math.floor((value.nanoseconds || 0) / 1000000)
+      );
+    }
+
+    if (typeof value?._seconds === "number") {
+      return (
+        value._seconds * 1000 +
+        Math.floor((value._nanoseconds || 0) / 1000000)
+      );
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? 0 : value.getTime();
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    const parsedDate = new Date(value);
+    const timestamp = parsedDate.getTime();
+
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  } catch {
+    return 0;
+  }
+};
+
+/**
+ * يجيب اخر كوم تم اضافته فعليا داخل الرشاش
+ * باستخدام createdAt
+ *
+ * لو بيانات قديمه بدون createdAt
+ * يتم الحفاظ على اول عنصر لان الـ collection
+ * اصلا بترجع مرتبه createdAt desc
+ */
+const getLatestHeapByCreatedAt = (heaps = []) => {
+  if (!heaps.length) {
+    return null;
+  }
+
+  let latestHeap = heaps[0];
+  let latestTimestamp = getTimestampValue(heaps[0]?.createdAt);
+
+  for (let index = 1; index < heaps.length; index += 1) {
+    const heap = heaps[index];
+    const heapTimestamp = getTimestampValue(heap?.createdAt);
+
+    if (heapTimestamp > latestTimestamp) {
+      latestHeap = heap;
+      latestTimestamp = heapTimestamp;
+    }
+  }
+
+  return latestHeap;
+};
+
+/**
+ * مهم للـ PDF
+ *
+ * بنستنى الصور تتحمل بالكامل قبل html2canvas
+ * عشان الصوره متطلعش فاضيه في التقرير
+ */
+const waitForContainerImages = async (container) => {
+  if (!container) return;
+
+  const images = Array.from(container.querySelectorAll("img"));
+
+  if (!images.length) return;
+
+  await Promise.all(
+    images.map((image) => {
+      if (image.complete) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        const cleanup = () => {
+          image.removeEventListener("load", handleDone);
+          image.removeEventListener("error", handleDone);
+        };
+
+        const handleDone = () => {
+          cleanup();
+          resolve();
+        };
+
+        image.addEventListener("load", handleDone);
+        image.addEventListener("error", handleDone);
+      });
+    })
+  );
+};
+
 const groupHeapsForReport = (heaps) => {
   const farmsMap = new Map();
 
   heaps.forEach((heap) => {
-    const farmName = normalizeText(heap.farmName, "مزرعة غير محددة");
+    const farmName = normalizeText(
+      heap.farmName,
+      "مزرعة غير محددة"
+    );
+
     const farmKey = heap.farmId || farmName;
 
     const sprinklerName = normalizeText(
@@ -90,7 +233,8 @@ const groupHeapsForReport = (heaps) => {
       "رشاش غير محدد"
     );
 
-    const sprinklerKey = heap.sprinklerId || sprinklerName;
+    const sprinklerKey =
+      heap.sprinklerId || sprinklerName;
 
     if (!farmsMap.has(farmKey)) {
       farmsMap.set(farmKey, {
@@ -108,22 +252,35 @@ const groupHeapsForReport = (heaps) => {
       });
     }
 
-    farm.sprinklers.get(sprinklerKey).heaps.push(heap);
+    farm.sprinklers
+      .get(sprinklerKey)
+      .heaps.push(heap);
   });
 
   return Array.from(farmsMap.values())
     .map((farm) => ({
       ...farm,
-      sprinklers: Array.from(farm.sprinklers.values()).sort((a, b) =>
-        a.sprinklerName.localeCompare(b.sprinklerName, "ar", {
-          numeric: true,
-        })
+
+      sprinklers: Array.from(
+        farm.sprinklers.values()
+      ).sort((a, b) =>
+        a.sprinklerName.localeCompare(
+          b.sprinklerName,
+          "ar",
+          {
+            numeric: true,
+          }
+        )
       ),
     }))
     .sort((a, b) =>
-      a.farmName.localeCompare(b.farmName, "ar", {
-        numeric: true,
-      })
+      a.farmName.localeCompare(
+        b.farmName,
+        "ar",
+        {
+          numeric: true,
+        }
+      )
     );
 };
 
@@ -131,15 +288,21 @@ const getBricksTotalsByCropType = (heaps) => {
   const totalsMap = new Map();
 
   heaps.forEach((heap) => {
-    const bricksCount = getValidBricksCount(heap.bricksCount);
+    const bricksCount = getValidBricksCount(
+      heap.bricksCount
+    );
 
     if (bricksCount === null) return;
 
-    const cropType = normalizeText(heap.cropType, "غير معلوم");
+    const cropType = normalizeText(
+      heap.cropType,
+      "غير معلوم"
+    );
 
     totalsMap.set(
       cropType,
-      (totalsMap.get(cropType) || 0) + bricksCount
+      (totalsMap.get(cropType) || 0) +
+        bricksCount
     );
   });
 
@@ -149,9 +312,13 @@ const getBricksTotalsByCropType = (heaps) => {
       total,
     }))
     .sort((a, b) =>
-      a.cropType.localeCompare(b.cropType, "ar", {
-        numeric: true,
-      })
+      a.cropType.localeCompare(
+        b.cropType,
+        "ar",
+        {
+          numeric: true,
+        }
+      )
     );
 };
 
@@ -168,8 +335,14 @@ const renderCropTotalsHtml = (
         style="
           padding: 12px;
           border-radius: 10px;
-          background: ${dark ? "rgba(255,255,255,.12)" : "#ffffff"};
-          color: ${dark ? "#ffffff" : "#64748b"};
+          background: ${
+            dark
+              ? "rgba(255,255,255,.12)"
+              : "#ffffff"
+          };
+          color: ${
+            dark ? "#ffffff" : "#64748b"
+          };
           font-size: 13px;
           font-weight: 800;
           text-align: center;
@@ -180,7 +353,10 @@ const renderCropTotalsHtml = (
     `;
   }
 
-  const columns = Math.min(totals.length, 3);
+  const columns = Math.min(
+    totals.length,
+    3
+  );
 
   return `
     <div
@@ -198,26 +374,36 @@ const renderCropTotalsHtml = (
                 padding: 11px 12px;
                 border-radius: 10px;
                 background: ${
-                  dark ? "rgba(255,255,255,.12)" : "#ffffff"
+                  dark
+                    ? "rgba(255,255,255,.12)"
+                    : "#ffffff"
                 };
               "
             >
               <div
                 style="
                   color: ${
-                    dark ? "rgba(255,255,255,.82)" : "#64748b"
+                    dark
+                      ? "rgba(255,255,255,.82)"
+                      : "#64748b"
                   };
                   font-size: 12px;
                   font-weight: 800;
                 "
               >
-                إجمالي ${escapeHtml(cropType)}
+                إجمالي ${escapeHtml(
+                  cropType
+                )}
               </div>
 
               <div
                 style="
                   margin-top: 3px;
-                  color: ${dark ? "#ffffff" : "#0f172a"};
+                  color: ${
+                    dark
+                      ? "#ffffff"
+                      : "#0f172a"
+                  };
                   font-size: 19px;
                   font-weight: 900;
                 "
@@ -235,32 +421,57 @@ const renderCropTotalsHtml = (
 export default function HeapsPage() {
   const { canManage } = useUserRole();
 
-  const [items, setItems] = useState([]);
-  const [search, setSearch] = useState("");
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [realtimeError, setRealtimeError] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [items, setItems] =
+    useState([]);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [
+    initialLoading,
+    setInitialLoading,
+  ] = useState(true);
+
+  const [
+    realtimeError,
+    setRealtimeError,
+  ] = useState("");
+
+  const [
+    currentPage,
+    setCurrentPage,
+  ] = useState(1);
+
+  const [
+    isExportingPdf,
+    setIsExportingPdf,
+  ] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeCachedCollection({
-      db,
-      collectionName: "heaps",
-      cacheKey: "cache:heaps",
-      orderField: "createdAt",
-      orderDirection: "desc",
-      onData: setItems,
-      onLoading: setInitialLoading,
-      onError: () => {
-        setRealtimeError("تعذر تحديث بيانات الأكوام لحظيًا");
-      },
-    });
+    const unsubscribe =
+      subscribeCachedCollection({
+        db,
+        collectionName: "heaps",
+        cacheKey: "cache:heaps",
+        orderField: "createdAt",
+        orderDirection: "desc",
+        onData: setItems,
+        onLoading: setInitialLoading,
+
+        onError: () => {
+          setRealtimeError(
+            "تعذر تحديث بيانات الأكوام لحظيًا"
+          );
+        },
+      });
 
     return () => unsubscribe?.();
   }, []);
 
   const filteredItems = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    const keyword = search
+      .trim()
+      .toLowerCase();
 
     if (!keyword) return items;
 
@@ -270,6 +481,9 @@ export default function HeapsPage() {
         ${item.farmName || ""}
         ${item.sprinklerName || ""}
         ${item.cropType || ""}
+        ${normalizeBrickSize(
+          item.brickSize
+        )}
         ${item.bricksCount || ""}
         ${item.notes || ""}
       `.toLowerCase();
@@ -279,22 +493,38 @@ export default function HeapsPage() {
   }, [items, search]);
 
   const totalBricks = useMemo(() => {
-    return filteredItems.reduce((sum, item) => {
-      const bricksCount = getValidBricksCount(item.bricksCount);
+    return filteredItems.reduce(
+      (sum, item) => {
+        const bricksCount =
+          getValidBricksCount(
+            item.bricksCount
+          );
 
-      return sum + (bricksCount ?? 0);
-    }, 0);
+        return (
+          sum + (bricksCount ?? 0)
+        );
+      },
+      0
+    );
   }, [filteredItems]);
 
   const totalFarms = useMemo(() => {
     return new Set(
       filteredItems
-        .map((item) => item.farmId || item.farmName)
+        .map(
+          (item) =>
+            item.farmId ||
+            item.farmName
+        )
         .filter(Boolean)
     ).size;
   }, [filteredItems]);
 
-  const totalPages = Math.ceil(filteredItems.length / PAGE_SIZE) || 1;
+  const totalPages =
+    Math.ceil(
+      filteredItems.length /
+        PAGE_SIZE
+    ) || 1;
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -302,412 +532,534 @@ export default function HeapsPage() {
     }
   }, [currentPage, totalPages]);
 
-  const paginatedItems = useMemo(() => {
-    return filteredItems.slice(
-      (currentPage - 1) * PAGE_SIZE,
-      currentPage * PAGE_SIZE
-    );
-  }, [filteredItems, currentPage]);
+  const paginatedItems =
+    useMemo(() => {
+      return filteredItems.slice(
+        (currentPage - 1) *
+          PAGE_SIZE,
+        currentPage * PAGE_SIZE
+      );
+    }, [
+      filteredItems,
+      currentPage,
+    ]);
 
   const clearFilters = () => {
     setSearch("");
     setCurrentPage(1);
   };
 
-  const exportAllHeapsToPdf = async () => {
-    if (isExportingPdf) return;
+  const exportAllHeapsToPdf =
+    async () => {
+      if (isExportingPdf) return;
 
-    if (!items.length) {
-      alert("لا توجد أكوام لتصديرها");
-      return;
-    }
-
-    setIsExportingPdf(true);
-
-    let reportContainer = null;
-
-    try {
-      const [{ default: jsPDF }, { default: html2canvas }] =
-        await Promise.all([import("jspdf"), import("html2canvas")]);
-
-      const groupedFarms = groupHeapsForReport(items);
-
-      const undefinedBricksCount = items.filter(
-        (item) => getValidBricksCount(item.bricksCount) === null
-      ).length;
-
-      const totalSprinklers = groupedFarms.reduce(
-        (sum, farm) => sum + farm.sprinklers.length,
-        0
-      );
-
-      const reportCropTotals = getBricksTotalsByCropType(items);
-
-      const generatedAt = new Intl.DateTimeFormat("ar-EG", {
-        dateStyle: "full",
-        timeStyle: "short",
-      }).format(new Date());
-
-      reportContainer = document.createElement("div");
-      reportContainer.setAttribute("dir", "rtl");
-
-      reportContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        right: -100000px;
-        width: 1120px;
-        box-sizing: border-box;
-        direction: rtl;
-        background: #ffffff;
-        color: #0f172a;
-        font-family: Tahoma, Arial, sans-serif;
-        line-height: 1.7;
-      `;
-
-      const createBlock = (html, extraStyles = "") => {
-        const block = document.createElement("section");
-
-        block.className = "pdf-report-block";
-
-        block.style.cssText = `
-          width: 1120px;
-          padding: 0 46px;
-          box-sizing: border-box;
-          background: #ffffff;
-          ${extraStyles}
-        `;
-
-        block.innerHTML = html;
-
-        return block;
-      };
-
-      reportContainer.appendChild(
-        createBlock(`
-          <div
-            style="
-              padding-top: 46px;
-              padding-bottom: 24px;
-              border-bottom: 3px solid #15803d;
-            "
-          >
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                gap: 25px;
-              "
-            >
-              <div>
-                <div
-                  style="
-                    color: #15803d;
-                    font-size: 14px;
-                    font-weight: 800;
-                  "
-                >
-                  إدارة المزرعة
-                </div>
-
-                <h1
-                  style="
-                    margin: 4px 0 0;
-                    font-size: 34px;
-                    font-weight: 900;
-                  "
-                >
-                  تقرير توزيع الأكوام على الرشاشات
-                </h1>
-
-                <p
-                  style="
-                    margin: 7px 0 0;
-                    color: #64748b;
-                    font-size: 14px;
-                    font-weight: 700;
-                  "
-                >
-                  جميع الأكوام المسجلة مجمعة حسب المزرعة ثم الرشاش
-                </p>
-              </div>
-
-              <div
-                style="
-                  padding: 12px 15px;
-                  border: 1px solid #dbe7df;
-                  border-radius: 12px;
-                  background: #f8fafc;
-                  text-align: right;
-                "
-              >
-                <div
-                  style="
-                    color: #64748b;
-                    font-size: 12px;
-                    font-weight: 700;
-                  "
-                >
-                  تاريخ إصدار التقرير
-                </div>
-
-                <div
-                  style="
-                    margin-top: 4px;
-                    font-size: 14px;
-                    font-weight: 900;
-                  "
-                >
-                  ${escapeHtml(generatedAt)}
-                </div>
-              </div>
-            </div>
-          </div>
-        `)
-      );
-
-      groupedFarms.forEach((farm) => {
-        const farmHeaps = farm.sprinklers.flatMap(
-          (sprinkler) => sprinkler.heaps
+      if (!items.length) {
+        alert(
+          "لا توجد أكوام لتصديرها"
         );
 
-        const farmUndefinedBricks = farmHeaps.filter(
-          (heap) => getValidBricksCount(heap.bricksCount) === null
-        ).length;
+        return;
+      }
 
-        const farmCropTotals = getBricksTotalsByCropType(farmHeaps);
+      setIsExportingPdf(true);
+
+      let reportContainer = null;
+
+      try {
+        const [
+          { default: jsPDF },
+          { default: html2canvas },
+        ] = await Promise.all([
+          import("jspdf"),
+          import("html2canvas"),
+        ]);
+
+        const groupedFarms =
+          groupHeapsForReport(items);
+
+        const undefinedBricksCount =
+          items.filter(
+            (item) =>
+              getValidBricksCount(
+                item.bricksCount
+              ) === null
+          ).length;
+
+        const totalSprinklers =
+          groupedFarms.reduce(
+            (sum, farm) =>
+              sum +
+              farm.sprinklers.length,
+            0
+          );
+
+        const reportCropTotals =
+          getBricksTotalsByCropType(
+            items
+          );
+
+        const generatedAt =
+          new Intl.DateTimeFormat(
+            "ar-EG",
+            {
+              dateStyle: "full",
+              timeStyle: "short",
+            }
+          ).format(new Date());
+
+        reportContainer =
+          document.createElement(
+            "div"
+          );
+
+        reportContainer.setAttribute(
+          "dir",
+          "rtl"
+        );
+
+        reportContainer.style.cssText = `
+          position: fixed;
+          top: 0;
+          right: -100000px;
+          width: 1120px;
+          box-sizing: border-box;
+          direction: rtl;
+          background: #ffffff;
+          color: #0f172a;
+          font-family: Tahoma, Arial, sans-serif;
+          line-height: 1.7;
+        `;
+
+        const createBlock = (
+          html,
+          extraStyles = ""
+        ) => {
+          const block =
+            document.createElement(
+              "section"
+            );
+
+          block.className =
+            "pdf-report-block";
+
+          block.style.cssText = `
+            width: 1120px;
+            padding: 0 46px;
+            box-sizing: border-box;
+            background: #ffffff;
+            ${extraStyles}
+          `;
+
+          block.innerHTML = html;
+
+          return block;
+        };
 
         reportContainer.appendChild(
           createBlock(`
             <div
               style="
-                margin-top: 30px;
-                padding: 18px 20px;
-                color: #ffffff;
-                background: #15803d;
-                border-radius: 14px;
+                padding-top: 46px;
+                padding-bottom: 24px;
+                border-bottom: 3px solid #15803d;
               "
             >
               <div
                 style="
-                  font-size: 13px;
-                  font-weight: 700;
-                  opacity: 0.9;
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: flex-start;
+                  gap: 25px;
                 "
               >
-                المزرعة
-              </div>
+                <div>
+                  <div
+                    style="
+                      color: #15803d;
+                      font-size: 14px;
+                      font-weight: 800;
+                    "
+                  >
+                    إدارة المزرعة
+                  </div>
 
-              <div
-                style="
-                  margin-top: 4px;
-                  font-size: 27px;
-                  font-weight: 900;
-                "
-              >
-                ${escapeHtml(farm.farmName)}
+                  <h1
+                    style="
+                      margin: 4px 0 0;
+                      font-size: 34px;
+                      font-weight: 900;
+                    "
+                  >
+                    تقرير توزيع الأكوام على الرشاشات
+                  </h1>
+
+                  <p
+                    style="
+                      margin: 7px 0 0;
+                      color: #64748b;
+                      font-size: 14px;
+                      font-weight: 700;
+                    "
+                  >
+                    جميع الأكوام المسجلة مجمعة حسب المزرعة ثم الرشاش
+                  </p>
+                </div>
+
+                <div
+                  style="
+                    padding: 12px 15px;
+                    border: 1px solid #dbe7df;
+                    border-radius: 12px;
+                    background: #f8fafc;
+                    text-align: right;
+                  "
+                >
+                  <div
+                    style="
+                      color: #64748b;
+                      font-size: 12px;
+                      font-weight: 700;
+                    "
+                  >
+                    تاريخ إصدار التقرير
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 4px;
+                      font-size: 14px;
+                      font-weight: 900;
+                    "
+                  >
+                    ${escapeHtml(
+                      generatedAt
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           `)
         );
 
-        farm.sprinklers.forEach((sprinkler) => {
-          const sprinklerUndefinedBricks = sprinkler.heaps.filter(
-            (heap) => getValidBricksCount(heap.bricksCount) === null
-          ).length;
-
-          const sprinklerCropTotals =
-            getBricksTotalsByCropType(sprinkler.heaps);
-
-          const sortedHeaps = sprinkler.heaps
-            .slice()
-            .sort((a, b) =>
-              normalizeText(a.pileName, "").localeCompare(
-                normalizeText(b.pileName, ""),
-                "ar",
-                {
-                  numeric: true,
-                }
-              )
-            );
-
-          const rowsHtml = sortedHeaps
-            .map((heap, heapIndex) => {
-              const bricksCount = getValidBricksCount(
-                heap.bricksCount
+        groupedFarms.forEach(
+          (farm) => {
+            const farmHeaps =
+              farm.sprinklers.flatMap(
+                (sprinkler) =>
+                  sprinkler.heaps
               );
 
-              return `
-                <tr>
-                  <td>${heapIndex + 1}</td>
+            const farmUndefinedBricks =
+              farmHeaps.filter(
+                (heap) =>
+                  getValidBricksCount(
+                    heap.bricksCount
+                  ) === null
+              ).length;
 
-                  <td style="font-weight: 800;">
-                    ${escapeHtml(normalizeText(heap.pileName, "-"))}
-                  </td>
+            const farmCropTotals =
+              getBricksTotalsByCropType(
+                farmHeaps
+              );
 
-                  <td>
-                    ${escapeHtml(
-                      normalizeText(heap.cropType, "غير معلوم")
-                    )}
-                  </td>
-
-                  <td style="font-weight: 800;">
-                    ${
-                      bricksCount === null
-                        ? "غير محدد"
-                        : formatNumber(bricksCount)
-                    }
-                  </td>
-                </tr>
-              `;
-            })
-            .join("");
-
-          reportContainer.appendChild(
-            createBlock(`
-              <div
-                style="
-                  margin-top: 20px;
-                  border: 1px solid #dbe7df;
-                  border-radius: 14px;
-                  overflow: hidden;
-                "
-              >
+            reportContainer.appendChild(
+              createBlock(`
                 <div
                   style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: 15px;
-                    padding: 15px 18px;
-                    background: #eaf8ef;
-                    border-bottom: 1px solid #d7eadc;
+                    margin-top: 30px;
+                    padding: 18px 20px;
+                    color: #ffffff;
+                    background: #15803d;
+                    border-radius: 14px;
                   "
                 >
-                  <div>
-                    <div
-                      style="
-                        color: #15803d;
-                        font-size: 13px;
-                        font-weight: 700;
-                      "
-                    >
-                      الرشاش
-                    </div>
-
-                    <div
-                      style="
-                        margin-top: 3px;
-                        font-size: 21px;
-                        font-weight: 900;
-                      "
-                    >
-                      ${escapeHtml(sprinkler.sprinklerName)}
-                    </div>
+                  <div
+                    style="
+                      font-size: 13px;
+                      font-weight: 700;
+                      opacity: 0.9;
+                    "
+                  >
+                    المزرعة
                   </div>
 
                   <div
                     style="
-                      min-width: 115px;
-                      padding: 8px 12px;
-                      border-radius: 10px;
-                      background: #ffffff;
-                      text-align: center;
+                      margin-top: 4px;
+                      font-size: 27px;
+                      font-weight: 900;
                     "
                   >
-                    <div
-                      style="
-                        color: #64748b;
-                        font-size: 12px;
-                        font-weight: 700;
-                      "
-                    >
-                      عدد الأكوام
-                    </div>
-
-                    <div
-                      style="
-                        margin-top: 2px;
-                        color: #166534;
-                        font-size: 20px;
-                        font-weight: 900;
-                      "
-                    >
-                      ${sprinkler.heaps.length}
-                    </div>
+                    ${escapeHtml(
+                      farm.farmName
+                    )}
                   </div>
                 </div>
+              `)
+            );
 
-                <table
-                  style="
-                    width: 100%;
-                    border-collapse: collapse;
-                    table-layout: fixed;
-                  "
-                >
-                  <thead>
-                    <tr style="background: #f8fafc;">
-                      <th style="width: 10%;">م</th>
-                      <th style="width: 35%;">اسم الكوم</th>
-                      <th style="width: 25%;">النوع</th>
-                      <th style="width: 30%;">عدد اللبن</th>
-                    </tr>
-                  </thead>
+            farm.sprinklers.forEach(
+              (sprinkler) => {
+                const sprinklerUndefinedBricks =
+                  sprinkler.heaps.filter(
+                    (heap) =>
+                      getValidBricksCount(
+                        heap.bricksCount
+                      ) === null
+                  ).length;
 
-                  <tbody>
-                    ${rowsHtml}
-                  </tbody>
-                </table>
+                const sprinklerCropTotals =
+                  getBricksTotalsByCropType(
+                    sprinkler.heaps
+                  );
 
-                <div
-                  style="
-                    padding: 14px;
-                    background: #f8fafc;
-                    border-top: 1px solid #e2e8f0;
-                  "
-                >
-                  <div
-                    style="
-                      display: grid;
-                      grid-template-columns: ${
-                        sprinklerUndefinedBricks > 0
-                          ? "repeat(2, 1fr)"
-                          : "1fr"
-                      };
-                      gap: 10px;
-                      margin-bottom: 10px;
-                    "
-                  >
+                /**
+                 * اخر كوم تم اضافته
+                 * داخل هذا الرشاش فقط
+                 */
+                const latestHeap =
+                  getLatestHeapByCreatedAt(
+                    sprinkler.heaps
+                  );
+
+                /**
+                 * مهم:
+                 * بنعرض صورة اخر كوم فقط
+                 *
+                 * لو اخر كوم ملوش صورة
+                 * مش بنرجع لكوم اقدم
+                 */
+                const latestHeapImageUrl =
+                  normalizeText(
+                    latestHeap?.imageUrl,
+                    ""
+                  );
+
+                const sortedHeaps =
+                  sprinkler.heaps
+                    .slice()
+                    .sort((a, b) =>
+                      normalizeText(
+                        a.pileName,
+                        ""
+                      ).localeCompare(
+                        normalizeText(
+                          b.pileName,
+                          ""
+                        ),
+                        "ar",
+                        {
+                          numeric: true,
+                        }
+                      )
+                    );
+
+                const rowsHtml =
+                  sortedHeaps
+                    .map(
+                      (
+                        heap,
+                        heapIndex
+                      ) => {
+                        const bricksCount =
+                          getValidBricksCount(
+                            heap.bricksCount
+                          );
+
+                        const brickSize =
+                          normalizeBrickSize(
+                            heap.brickSize
+                          );
+
+                        return `
+                          <tr>
+                            <td>
+                              ${
+                                heapIndex +
+                                1
+                              }
+                            </td>
+
+                            <td style="font-weight: 800;">
+                              ${escapeHtml(
+                                normalizeText(
+                                  heap.pileName,
+                                  "-"
+                                )
+                              )}
+                            </td>
+
+                            <td>
+                              ${escapeHtml(
+                                normalizeText(
+                                  heap.cropType,
+                                  "غير معلوم"
+                                )
+                              )}
+                            </td>
+
+                            <td>
+                              ${escapeHtml(
+                                brickSize
+                              )}
+                            </td>
+
+                            <td style="font-weight: 800;">
+                              ${
+                                bricksCount ===
+                                null
+                                  ? "غير محدد"
+                                  : formatNumber(
+                                      bricksCount
+                                    )
+                              }
+                            </td>
+                          </tr>
+                        `;
+                      }
+                    )
+                    .join("");
+
+                /**
+                 * بلوك الرشاش الاصلي
+                 */
+                reportContainer.appendChild(
+                  createBlock(`
                     <div
                       style="
-                        padding: 10px;
-                        background: #ffffff;
-                        border-radius: 9px;
+                        margin-top: 20px;
+                        border: 1px solid #dbe7df;
+                        border-radius: 14px;
+                        overflow: hidden;
                       "
                     >
                       <div
                         style="
-                          color: #64748b;
-                          font-size: 12px;
-                          font-weight: 700;
+                          display: flex;
+                          align-items: center;
+                          justify-content: space-between;
+                          gap: 15px;
+                          padding: 15px 18px;
+                          background: #eaf8ef;
+                          border-bottom: 1px solid #d7eadc;
                         "
                       >
-                        عدد الأكوام في الرشاش
+                        <div>
+                          <div
+                            style="
+                              color: #15803d;
+                              font-size: 13px;
+                              font-weight: 700;
+                            "
+                          >
+                            الرشاش
+                          </div>
+
+                          <div
+                            style="
+                              margin-top: 3px;
+                              font-size: 21px;
+                              font-weight: 900;
+                            "
+                          >
+                            ${escapeHtml(
+                              sprinkler.sprinklerName
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style="
+                            min-width: 115px;
+                            padding: 8px 12px;
+                            border-radius: 10px;
+                            background: #ffffff;
+                            text-align: center;
+                          "
+                        >
+                          <div
+                            style="
+                              color: #64748b;
+                              font-size: 12px;
+                              font-weight: 700;
+                            "
+                          >
+                            عدد الأكوام
+                          </div>
+
+                          <div
+                            style="
+                              margin-top: 2px;
+                              color: #166534;
+                              font-size: 20px;
+                              font-weight: 900;
+                            "
+                          >
+                            ${
+                              sprinkler
+                                .heaps
+                                .length
+                            }
+                          </div>
+                        </div>
                       </div>
+
+                      <table
+                        style="
+                          width: 100%;
+                          border-collapse: collapse;
+                          table-layout: fixed;
+                        "
+                      >
+                        <thead>
+                          <tr style="background: #f8fafc;">
+                            <th style="width: 8%;">
+                              م
+                            </th>
+
+                            <th style="width: 28%;">
+                              اسم الكوم
+                            </th>
+
+                            <th style="width: 20%;">
+                              النوع
+                            </th>
+
+                            <th style="width: 20%;">
+                              حجم اللبنه
+                            </th>
+
+                            <th style="width: 24%;">
+                              عدد اللبن
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          ${rowsHtml}
+                        </tbody>
+                      </table>
 
                       <div
                         style="
-                          font-size: 18px;
-                          font-weight: 900;
+                          padding: 14px;
+                          background: #f8fafc;
+                          border-top: 1px solid #e2e8f0;
                         "
                       >
-                        ${sprinkler.heaps.length}
-                      </div>
-                    </div>
-
-                    ${
-                      sprinklerUndefinedBricks > 0
-                        ? `
+                        <div
+                          style="
+                            display: grid;
+                            grid-template-columns: ${
+                              sprinklerUndefinedBricks >
+                              0
+                                ? "repeat(2, 1fr)"
+                                : "1fr"
+                            };
+                            gap: 10px;
+                            margin-bottom: 10px;
+                          "
+                        >
                           <div
                             style="
                               padding: 10px;
@@ -722,7 +1074,7 @@ export default function HeapsPage() {
                                 font-weight: 700;
                               "
                             >
-                              أكوام بدون عدد لبن محدد
+                              عدد الأكوام في الرشاش
                             </div>
 
                             <div
@@ -731,7 +1083,306 @@ export default function HeapsPage() {
                                 font-weight: 900;
                               "
                             >
-                              ${sprinklerUndefinedBricks}
+                              ${
+                                sprinkler
+                                  .heaps
+                                  .length
+                              }
+                            </div>
+                          </div>
+
+                          ${
+                            sprinklerUndefinedBricks >
+                            0
+                              ? `
+                                <div
+                                  style="
+                                    padding: 10px;
+                                    background: #ffffff;
+                                    border-radius: 9px;
+                                  "
+                                >
+                                  <div
+                                    style="
+                                      color: #64748b;
+                                      font-size: 12px;
+                                      font-weight: 700;
+                                    "
+                                  >
+                                    أكوام بدون عدد لبن محدد
+                                  </div>
+
+                                  <div
+                                    style="
+                                      font-size: 18px;
+                                      font-weight: 900;
+                                    "
+                                  >
+                                    ${sprinklerUndefinedBricks}
+                                  </div>
+                                </div>
+                              `
+                              : ""
+                          }
+                        </div>
+
+                        <div
+                          style="
+                            margin-bottom: 8px;
+                            color: #166534;
+                            font-size: 14px;
+                            font-weight: 900;
+                          "
+                        >
+                          إجماليات اللبن حسب النوع
+                        </div>
+
+                        ${renderCropTotalsHtml(
+                          sprinklerCropTotals
+                        )}
+                      </div>
+                    </div>
+                  `)
+                );
+
+                /**
+                 * صورة واحده فقط
+                 * وهي صورة اخر كوم مضاف
+                 * لنفس الرشاش
+                 */
+                if (
+                  latestHeap &&
+                  latestHeapImageUrl
+                ) {
+                  reportContainer.appendChild(
+                    createBlock(`
+                      <div
+                        style="
+                          margin-top: 10px;
+                          padding: 16px 18px 18px;
+                          border: 1px solid #dbe7df;
+                          border-radius: 14px;
+                          background: #ffffff;
+                        "
+                      >
+                        <div
+                          style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 15px;
+                            margin-bottom: 12px;
+                          "
+                        >
+                          <div>
+                            <div
+                              style="
+                                color: #15803d;
+                                font-size: 13px;
+                                font-weight: 900;
+                              "
+                            >
+                              اخر صوره للرشاش
+                            </div>
+
+                            <div
+                              style="
+                                margin-top: 3px;
+                                color: #0f172a;
+                                font-size: 17px;
+                                font-weight: 900;
+                              "
+                            >
+                              ${escapeHtml(
+                                normalizeText(
+                                  latestHeap.pileName,
+                                  "الكوم الاخير"
+                                )
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            style="
+                              padding: 7px 11px;
+                              border-radius: 9px;
+                              background: #eaf8ef;
+                              color: #166534;
+                              font-size: 12px;
+                              font-weight: 900;
+                            "
+                          >
+                            ${escapeHtml(
+                              sprinkler.sprinklerName
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style="
+                            width: 100%;
+                            padding: 8px;
+                            box-sizing: border-box;
+                            border-radius: 12px;
+                            background: #f8fafc;
+                            border: 1px solid #e2e8f0;
+                            text-align: center;
+                          "
+                        >
+                          <img
+                            src="${escapeHtml(
+                              latestHeapImageUrl
+                            )}"
+                            alt="${escapeHtml(
+                              normalizeText(
+                                latestHeap.pileName,
+                                "صورة الكوم"
+                              )
+                            )}"
+                            style="
+                              display: block;
+                              width: 100%;
+                              max-width: 100%;
+                              height: auto;
+                              max-height: 430px;
+                              margin: 0 auto;
+                              object-fit: contain;
+                              border-radius: 10px;
+                            "
+                          />
+                        </div>
+                      </div>
+                    `)
+                  );
+                }
+              }
+            );
+
+            reportContainer.appendChild(
+              createBlock(`
+                <div
+                  style="
+                    margin-top: 20px;
+                    padding: 18px;
+                    border: 2px solid #bbf7d0;
+                    border-radius: 14px;
+                    background: #f0fdf4;
+                  "
+                >
+                  <div
+                    style="
+                      margin-bottom: 12px;
+                      color: #166534;
+                      font-size: 18px;
+                      font-weight: 900;
+                    "
+                  >
+                    ملخص مزرعة ${escapeHtml(
+                      farm.farmName
+                    )}
+                  </div>
+
+                  <div
+                    style="
+                      display: grid;
+                      grid-template-columns: ${
+                        farmUndefinedBricks >
+                        0
+                          ? "repeat(3, 1fr)"
+                          : "repeat(2, 1fr)"
+                      };
+                      gap: 10px;
+                      margin-bottom: 12px;
+                    "
+                  >
+                    <div
+                      style="
+                        padding: 12px;
+                        background: #ffffff;
+                        border-radius: 10px;
+                      "
+                    >
+                      <div
+                        style="
+                          color: #64748b;
+                          font-size: 12px;
+                          font-weight: 700;
+                        "
+                      >
+                        عدد الرشاشات المذكورة
+                      </div>
+
+                      <div
+                        style="
+                          font-size: 20px;
+                          font-weight: 900;
+                        "
+                      >
+                        ${
+                          farm
+                            .sprinklers
+                            .length
+                        }
+                      </div>
+                    </div>
+
+                    <div
+                      style="
+                        padding: 12px;
+                        background: #ffffff;
+                        border-radius: 10px;
+                      "
+                    >
+                      <div
+                        style="
+                          color: #64748b;
+                          font-size: 12px;
+                          font-weight: 700;
+                        "
+                      >
+                        إجمالي الأكوام المذكورة في المزرعة
+                      </div>
+
+                      <div
+                        style="
+                          font-size: 20px;
+                          font-weight: 900;
+                        "
+                      >
+                        ${
+                          farmHeaps.length
+                        }
+                      </div>
+                    </div>
+
+                    ${
+                      farmUndefinedBricks >
+                      0
+                        ? `
+                          <div
+                            style="
+                              padding: 12px;
+                              background: #ffffff;
+                              border-radius: 10px;
+                            "
+                          >
+                            <div
+                              style="
+                                color: #64748b;
+                                font-size: 12px;
+                                font-weight: 700;
+                              "
+                            >
+                              أكوام بدون عدد لبن محدد
+                            </div>
+
+                            <div
+                              style="
+                                font-size: 20px;
+                                font-weight: 900;
+                              "
+                            >
+                              ${farmUndefinedBricks}
                             </div>
                           </div>
                         `
@@ -747,119 +1398,153 @@ export default function HeapsPage() {
                       font-weight: 900;
                     "
                   >
-                    إجماليات اللبن حسب النوع
+                    إجماليات اللبن في المزرعة حسب النوع
                   </div>
 
-                  ${renderCropTotalsHtml(sprinklerCropTotals)}
+                  ${renderCropTotalsHtml(
+                    farmCropTotals
+                  )}
                 </div>
-              </div>
-            `)
-          );
-        });
+              `)
+            );
+          }
+        );
 
         reportContainer.appendChild(
           createBlock(`
             <div
               style="
-                margin-top: 20px;
-                padding: 18px;
-                border: 2px solid #bbf7d0;
-                border-radius: 14px;
-                background: #f0fdf4;
+                margin-top: 34px;
+                margin-bottom: 46px;
+                padding: 24px;
+                border-radius: 16px;
+                color: #ffffff;
+                background: #14532d;
               "
             >
               <div
                 style="
-                  margin-bottom: 12px;
-                  color: #166534;
-                  font-size: 18px;
+                  margin-bottom: 16px;
+                  font-size: 24px;
                   font-weight: 900;
                 "
               >
-                ملخص مزرعة ${escapeHtml(farm.farmName)}
+                الملخص العام للتقرير
               </div>
 
               <div
                 style="
                   display: grid;
                   grid-template-columns: ${
-                    farmUndefinedBricks > 0
-                      ? "repeat(3, 1fr)"
-                      : "repeat(2, 1fr)"
+                    undefinedBricksCount >
+                    0
+                      ? "repeat(4, 1fr)"
+                      : "repeat(3, 1fr)"
                   };
                   gap: 10px;
-                  margin-bottom: 12px;
+                  margin-bottom: 14px;
                 "
               >
                 <div
                   style="
-                    padding: 12px;
-                    background: #ffffff;
+                    padding: 14px;
                     border-radius: 10px;
+                    background: rgba(255,255,255,.12);
                   "
                 >
                   <div
                     style="
-                      color: #64748b;
                       font-size: 12px;
                       font-weight: 700;
+                      opacity: .85;
                     "
                   >
-                    عدد الرشاشات المذكورة
+                    إجمالي المزارع
                   </div>
 
                   <div
                     style="
-                      font-size: 20px;
+                      margin-top: 4px;
+                      font-size: 23px;
                       font-weight: 900;
                     "
                   >
-                    ${farm.sprinklers.length}
+                    ${groupedFarms.length}
                   </div>
                 </div>
 
                 <div
                   style="
-                    padding: 12px;
-                    background: #ffffff;
+                    padding: 14px;
                     border-radius: 10px;
+                    background: rgba(255,255,255,.12);
                   "
                 >
                   <div
                     style="
-                      color: #64748b;
                       font-size: 12px;
                       font-weight: 700;
+                      opacity: .85;
                     "
                   >
-                    إجمالي الأكوام المذكورة في المزرعة
+                    إجمالي الرشاشات المذكورة
                   </div>
 
                   <div
                     style="
-                      font-size: 20px;
+                      margin-top: 4px;
+                      font-size: 23px;
                       font-weight: 900;
                     "
                   >
-                    ${farmHeaps.length}
+                    ${totalSprinklers}
+                  </div>
+                </div>
+
+                <div
+                  style="
+                    padding: 14px;
+                    border-radius: 10px;
+                    background: rgba(255,255,255,.12);
+                  "
+                >
+                  <div
+                    style="
+                      font-size: 12px;
+                      font-weight: 700;
+                      opacity: .85;
+                    "
+                  >
+                    إجمالي الأكوام المذكورة
+                  </div>
+
+                  <div
+                    style="
+                      margin-top: 4px;
+                      font-size: 23px;
+                      font-weight: 900;
+                    "
+                  >
+                    ${items.length}
                   </div>
                 </div>
 
                 ${
-                  farmUndefinedBricks > 0
+                  undefinedBricksCount >
+                  0
                     ? `
                       <div
                         style="
-                          padding: 12px;
-                          background: #ffffff;
+                          padding: 14px;
                           border-radius: 10px;
+                          background: rgba(255,255,255,.12);
                         "
                       >
                         <div
                           style="
-                            color: #64748b;
                             font-size: 12px;
                             font-weight: 700;
+                            opacity: .85;
                           "
                         >
                           أكوام بدون عدد لبن محدد
@@ -867,11 +1552,12 @@ export default function HeapsPage() {
 
                         <div
                           style="
-                            font-size: 20px;
+                            margin-top: 4px;
+                            font-size: 23px;
                             font-weight: 900;
                           "
                         >
-                          ${farmUndefinedBricks}
+                          ${undefinedBricksCount}
                         </div>
                       </div>
                     `
@@ -882,340 +1568,271 @@ export default function HeapsPage() {
               <div
                 style="
                   margin-bottom: 8px;
-                  color: #166534;
                   font-size: 14px;
                   font-weight: 900;
                 "
               >
-                إجماليات اللبن في المزرعة حسب النوع
+                إجماليات اللبن العامة حسب النوع
               </div>
 
-              ${renderCropTotalsHtml(farmCropTotals)}
+              ${renderCropTotalsHtml(
+                reportCropTotals,
+                {
+                  dark: true,
+                }
+              )}
+
+              <div
+                style="
+                  margin-top: 18px;
+                  padding-top: 14px;
+                  border-top: 1px solid rgba(255,255,255,.2);
+                  color: rgba(255,255,255,.8);
+                  font-size: 12px;
+                  font-weight: 700;
+                  text-align: center;
+                "
+              >
+                تم إنشاء هذا التقرير تلقائيًا من نظام إدارة المزرعة
+              </div>
             </div>
           `)
         );
-      });
 
-      reportContainer.appendChild(
-        createBlock(`
-          <div
-            style="
-              margin-top: 34px;
-              margin-bottom: 46px;
-              padding: 24px;
-              border-radius: 16px;
-              color: #ffffff;
-              background: #14532d;
-            "
-          >
-            <div
-              style="
-                margin-bottom: 16px;
-                font-size: 24px;
-                font-weight: 900;
-              "
-            >
-              الملخص العام للتقرير
-            </div>
+        reportContainer
+          .querySelectorAll(
+            "th, td"
+          )
+          .forEach((cell) => {
+            cell.style.padding =
+              "11px 10px";
 
-            <div
-              style="
-                display: grid;
-                grid-template-columns: ${
-                  undefinedBricksCount > 0
-                    ? "repeat(4, 1fr)"
-                    : "repeat(3, 1fr)"
-                };
-                gap: 10px;
-                margin-bottom: 14px;
-              "
-            >
-              <div
-                style="
-                  padding: 14px;
-                  border-radius: 10px;
-                  background: rgba(255,255,255,.12);
-                "
-              >
-                <div
-                  style="
-                    font-size: 12px;
-                    font-weight: 700;
-                    opacity: .85;
-                  "
-                >
-                  إجمالي المزارع
-                </div>
+            cell.style.border =
+              "1px solid #e2e8f0";
 
-                <div
-                  style="
-                    margin-top: 4px;
-                    font-size: 23px;
-                    font-weight: 900;
-                  "
-                >
-                  ${groupedFarms.length}
-                </div>
-              </div>
+            cell.style.textAlign =
+              "right";
 
-              <div
-                style="
-                  padding: 14px;
-                  border-radius: 10px;
-                  background: rgba(255,255,255,.12);
-                "
-              >
-                <div
-                  style="
-                    font-size: 12px;
-                    font-weight: 700;
-                    opacity: .85;
-                  "
-                >
-                  إجمالي الرشاشات المذكورة
-                </div>
+            cell.style.fontSize =
+              "13px";
 
-                <div
-                  style="
-                    margin-top: 4px;
-                    font-size: 23px;
-                    font-weight: 900;
-                  "
-                >
-                  ${totalSprinklers}
-                </div>
-              </div>
+            cell.style.wordBreak =
+              "break-word";
+          });
 
-              <div
-                style="
-                  padding: 14px;
-                  border-radius: 10px;
-                  background: rgba(255,255,255,.12);
-                "
-              >
-                <div
-                  style="
-                    font-size: 12px;
-                    font-weight: 700;
-                    opacity: .85;
-                  "
-                >
-                  إجمالي الأكوام المذكورة
-                </div>
+        reportContainer
+          .querySelectorAll("th")
+          .forEach((cell) => {
+            cell.style.fontWeight =
+              "900";
 
-                <div
-                  style="
-                    margin-top: 4px;
-                    font-size: 23px;
-                    font-weight: 900;
-                  "
-                >
-                  ${items.length}
-                </div>
-              </div>
+            cell.style.color =
+              "#334155";
+          });
 
-              ${
-                undefinedBricksCount > 0
-                  ? `
-                    <div
-                      style="
-                        padding: 14px;
-                        border-radius: 10px;
-                        background: rgba(255,255,255,.12);
-                      "
-                    >
-                      <div
-                        style="
-                          font-size: 12px;
-                          font-weight: 700;
-                          opacity: .85;
-                        "
-                      >
-                        أكوام بدون عدد لبن محدد
-                      </div>
+        document.body.appendChild(
+          reportContainer
+        );
 
-                      <div
-                        style="
-                          margin-top: 4px;
-                          font-size: 23px;
-                          font-weight: 900;
-                        "
-                      >
-                        ${undefinedBricksCount}
-                      </div>
-                    </div>
-                  `
-                  : ""
-              }
-            </div>
+        /**
+         * نستنى الخطوط والصور
+         * قبل تصوير التقرير
+         */
+        await document.fonts?.ready;
 
-            <div
-              style="
-                margin-bottom: 8px;
-                font-size: 14px;
-                font-weight: 900;
-              "
-            >
-              إجماليات اللبن العامة حسب النوع
-            </div>
+        await waitForContainerImages(
+          reportContainer
+        );
 
-            ${renderCropTotalsHtml(reportCropTotals, {
-              dark: true,
-            })}
-
-            <div
-              style="
-                margin-top: 18px;
-                padding-top: 14px;
-                border-top: 1px solid rgba(255,255,255,.2);
-                color: rgba(255,255,255,.8);
-                font-size: 12px;
-                font-weight: 700;
-                text-align: center;
-              "
-            >
-              تم إنشاء هذا التقرير تلقائيًا من نظام إدارة المزرعة
-            </div>
-          </div>
-        `)
-      );
-
-      reportContainer.querySelectorAll("th, td").forEach((cell) => {
-        cell.style.padding = "11px 10px";
-        cell.style.border = "1px solid #e2e8f0";
-        cell.style.textAlign = "right";
-        cell.style.fontSize = "13px";
-        cell.style.wordBreak = "break-word";
-      });
-
-      reportContainer.querySelectorAll("th").forEach((cell) => {
-        cell.style.fontWeight = "900";
-        cell.style.color = "#334155";
-      });
-
-      document.body.appendChild(reportContainer);
-
-      await document.fonts?.ready;
-
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4",
-        compress: true,
-      });
-
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const marginX = 8;
-      const marginTop = 8;
-      const marginBottom = 12;
-      const blocksGap = 4;
-
-      const printableWidth = pageWidth - marginX * 2;
-      const printableHeight =
-        pageHeight - marginTop - marginBottom;
-
-      let currentY = marginTop;
-      let isFirstBlock = true;
-
-      const reportBlocks = Array.from(
-        reportContainer.querySelectorAll(".pdf-report-block")
-      );
-
-      for (const block of reportBlocks) {
-        const canvas = await html2canvas(block, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          logging: false,
-          windowWidth: 1220,
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4",
+          compress: true,
         });
 
-        let imageWidth = printableWidth;
-        let imageHeight =
-          (canvas.height * imageWidth) / canvas.width;
+        const pageWidth =
+          pdf.internal.pageSize.getWidth();
 
-        if (imageHeight > printableHeight) {
-          const scaleFactor = printableHeight / imageHeight;
+        const pageHeight =
+          pdf.internal.pageSize.getHeight();
 
-          imageWidth *= scaleFactor;
-          imageHeight *= scaleFactor;
-        }
+        const marginX = 8;
+        const marginTop = 8;
+        const marginBottom = 12;
+        const blocksGap = 4;
 
-        const remainingHeight =
-          pageHeight - marginBottom - currentY;
+        const printableWidth =
+          pageWidth - marginX * 2;
 
-        if (!isFirstBlock && imageHeight > remainingHeight) {
-          pdf.addPage();
-          currentY = marginTop;
-        }
+        const printableHeight =
+          pageHeight -
+          marginTop -
+          marginBottom;
 
-        const imageX =
-          marginX + (printableWidth - imageWidth) / 2;
+        let currentY = marginTop;
+        let isFirstBlock = true;
 
-        const imageData = canvas.toDataURL("image/jpeg", 0.96);
+        const reportBlocks =
+          Array.from(
+            reportContainer.querySelectorAll(
+              ".pdf-report-block"
+            )
+          );
 
-        pdf.addImage(
-          imageData,
-          "JPEG",
-          imageX,
-          currentY,
-          imageWidth,
-          imageHeight,
-          undefined,
-          "FAST"
-        );
+        for (const block of reportBlocks) {
+          const canvas =
+            await html2canvas(
+              block,
+              {
+                scale: 2,
+                useCORS: true,
+                backgroundColor:
+                  "#ffffff",
+                logging: false,
+                windowWidth: 1220,
+              }
+            );
 
-        currentY += imageHeight + blocksGap;
-        isFirstBlock = false;
-      }
+          let imageWidth =
+            printableWidth;
 
-      const totalPdfPages = pdf.getNumberOfPages();
+          let imageHeight =
+            (canvas.height *
+              imageWidth) /
+            canvas.width;
 
-      for (
-        let pageIndex = 1;
-        pageIndex <= totalPdfPages;
-        pageIndex += 1
-      ) {
-        pdf.setPage(pageIndex);
-        pdf.setFontSize(8);
-        pdf.setTextColor(100);
+          if (
+            imageHeight >
+            printableHeight
+          ) {
+            const scaleFactor =
+              printableHeight /
+              imageHeight;
 
-        pdf.text(
-          `${pageIndex} / ${totalPdfPages}`,
-          pageWidth / 2,
-          pageHeight - 4,
-          {
-            align: "center",
+            imageWidth *=
+              scaleFactor;
+
+            imageHeight *=
+              scaleFactor;
           }
+
+          const remainingHeight =
+            pageHeight -
+            marginBottom -
+            currentY;
+
+          if (
+            !isFirstBlock &&
+            imageHeight >
+              remainingHeight
+          ) {
+            pdf.addPage();
+
+            currentY = marginTop;
+          }
+
+          const imageX =
+            marginX +
+            (printableWidth -
+              imageWidth) /
+              2;
+
+          const imageData =
+            canvas.toDataURL(
+              "image/jpeg",
+              0.96
+            );
+
+          pdf.addImage(
+            imageData,
+            "JPEG",
+            imageX,
+            currentY,
+            imageWidth,
+            imageHeight,
+            undefined,
+            "FAST"
+          );
+
+          currentY +=
+            imageHeight +
+            blocksGap;
+
+          isFirstBlock = false;
+        }
+
+        const totalPdfPages =
+          pdf.getNumberOfPages();
+
+        for (
+          let pageIndex = 1;
+          pageIndex <=
+          totalPdfPages;
+          pageIndex += 1
+        ) {
+          pdf.setPage(pageIndex);
+
+          pdf.setFontSize(8);
+          pdf.setTextColor(100);
+
+          pdf.text(
+            `${pageIndex} / ${totalPdfPages}`,
+            pageWidth / 2,
+            pageHeight - 4,
+            {
+              align: "center",
+            }
+          );
+        }
+
+        const date = new Date()
+          .toISOString()
+          .slice(0, 10);
+
+        pdf.save(
+          `heaps-report-${date}.pdf`
         );
+      } catch (error) {
+        console.error(
+          "PDF export error:",
+          error
+        );
+
+        alert(
+          "حدث خطأ أثناء إنشاء تقرير PDF"
+        );
+      } finally {
+        reportContainer?.remove();
+
+        setIsExportingPdf(false);
       }
-
-      const date = new Date().toISOString().slice(0, 10);
-
-      pdf.save(`heaps-report-${date}.pdf`);
-    } catch (error) {
-      console.error("PDF export error:", error);
-
-      alert("حدث خطأ أثناء إنشاء تقرير PDF");
-    } finally {
-      reportContainer?.remove();
-      setIsExportingPdf(false);
-    }
-  };
+    };
 
   const remove = async (id) => {
     if (!canManage) return;
 
-    if (!confirm("هل تريد حذف الكوم؟")) return;
+    if (
+      !confirm(
+        "هل تريد حذف الكوم؟"
+      )
+    ) {
+      return;
+    }
 
-    const target = items.find((item) => item.id === id);
+    const target = items.find(
+      (item) => item.id === id
+    );
 
     removeFromHeapsCache(id);
 
-    if (paginatedItems.length === 1 && currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
+    if (
+      paginatedItems.length === 1 &&
+      currentPage > 1
+    ) {
+      setCurrentPage(
+        (prev) => prev - 1
+      );
     }
 
     if (!isOnline()) {
@@ -1224,18 +1841,25 @@ export default function HeapsPage() {
         operation: "delete",
         documentId: id,
         payload: {},
+
         meta: {
           label: "حذف كوم",
-          name: target?.pileName || "",
+          name:
+            target?.pileName || "",
         },
       });
 
-      alert("تم حذف الكوم محليًا وسيتم تنفيذ الحذف عند عودة الاتصال");
+      alert(
+        "تم حذف الكوم محليًا وسيتم تنفيذ الحذف عند عودة الاتصال"
+      );
+
       return;
     }
 
     try {
-      await deleteDoc(doc(db, "heaps", id));
+      await deleteDoc(
+        doc(db, "heaps", id)
+      );
     } catch (error) {
       console.error(error);
 
@@ -1244,9 +1868,11 @@ export default function HeapsPage() {
         operation: "delete",
         documentId: id,
         payload: {},
+
         meta: {
           label: "حذف كوم",
-          name: target?.pileName || "",
+          name:
+            target?.pileName || "",
         },
       });
 
@@ -1280,7 +1906,9 @@ export default function HeapsPage() {
                 </p>
 
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {filteredItems.length}
+                  {
+                    filteredItems.length
+                  }
                 </h3>
               </div>
 
@@ -1290,7 +1918,9 @@ export default function HeapsPage() {
                 </p>
 
                 <h3 className="mt-2 text-4xl font-black text-slate-900">
-                  {formatNumber(totalBricks)}
+                  {formatNumber(
+                    totalBricks
+                  )}
                 </h3>
               </div>
 
@@ -1308,17 +1938,26 @@ export default function HeapsPage() {
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="page-card flex flex-1 items-center gap-2 p-3">
                 <FontAwesomeIcon
-                  icon={faMagnifyingGlass}
+                  icon={
+                    faMagnifyingGlass
+                  }
                   className="text-slate-400"
                 />
 
                 <input
                   type="text"
-                  placeholder="بحث باسم الكوم أو المزرعة أو الرشاش أو النوع..."
+                  placeholder="بحث باسم الكوم أو المزرعة أو الرشاش أو النوع أو حجم اللبنه..."
                   value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                    setCurrentPage(1);
+                  onChange={(
+                    event
+                  ) => {
+                    setSearch(
+                      event.target.value
+                    );
+
+                    setCurrentPage(
+                      1
+                    );
                   }}
                   className="w-full bg-transparent p-2 outline-none"
                 />
@@ -1327,22 +1966,39 @@ export default function HeapsPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={clearFilters}
+                  onClick={
+                    clearFilters
+                  }
                   className="btn-secondary"
                 >
-                  <FontAwesomeIcon icon={faBroom} />
+                  <FontAwesomeIcon
+                    icon={faBroom}
+                  />
                   مسح البحث
                 </button>
 
                 <button
                   type="button"
-                  onClick={exportAllHeapsToPdf}
-                  disabled={isExportingPdf || items.length === 0}
+                  onClick={
+                    exportAllHeapsToPdf
+                  }
+                  disabled={
+                    isExportingPdf ||
+                    items.length === 0
+                  }
                   className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <FontAwesomeIcon
-                    icon={isExportingPdf ? faSpinner : faFilePdf}
-                    className={isExportingPdf ? "animate-spin" : ""}
+                    icon={
+                      isExportingPdf
+                        ? faSpinner
+                        : faFilePdf
+                    }
+                    className={
+                      isExportingPdf
+                        ? "animate-spin"
+                        : ""
+                    }
                   />
 
                   {isExportingPdf
@@ -1351,8 +2007,13 @@ export default function HeapsPage() {
                 </button>
 
                 {canManage && (
-                  <Link href="/heaps/add" className="btn-primary">
-                    <FontAwesomeIcon icon={faPlus} />
+                  <Link
+                    href="/heaps/add"
+                    className="btn-primary"
+                  >
+                    <FontAwesomeIcon
+                      icon={faPlus}
+                    />
                     إضافة كوم
                   </Link>
                 )}
@@ -1360,7 +2021,11 @@ export default function HeapsPage() {
             </div>
 
             <div className="mb-3 text-sm font-bold text-slate-500">
-              المعروض في هذه الصفحة: {paginatedItems.length} من إجمالي النتائج{" "}
+              المعروض في هذه الصفحة:{" "}
+              {
+                paginatedItems.length
+              }{" "}
+              من إجمالي النتائج{" "}
               {filteredItems.length}
             </div>
 
@@ -1368,112 +2033,191 @@ export default function HeapsPage() {
               <table className="w-full">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="table-th">اسم الكوم</th>
-                    <th className="table-th">النوع</th>
-                    <th className="table-th">المزرعة</th>
-                    <th className="table-th">الرشاش</th>
-                    <th className="table-th">عدد اللبن</th>
-                    <th className="table-th">الإجراءات</th>
+                    <th className="table-th">
+                      اسم الكوم
+                    </th>
+
+                    <th className="table-th">
+                      النوع
+                    </th>
+
+                    <th className="table-th">
+                      حجم اللبنه
+                    </th>
+
+                    <th className="table-th">
+                      المزرعة
+                    </th>
+
+                    <th className="table-th">
+                      الرشاش
+                    </th>
+
+                    <th className="table-th">
+                      عدد اللبن
+                    </th>
+
+                    <th className="table-th">
+                      الإجراءات
+                    </th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {paginatedItems.length === 0 ? (
+                  {paginatedItems.length ===
+                  0 ? (
                     <tr>
-                      <td colSpan="6" className="table-td text-center">
+                      <td
+                        colSpan="7"
+                        className="table-td text-center"
+                      >
                         لا توجد بيانات
                       </td>
                     </tr>
                   ) : (
-                    paginatedItems.map((item) => {
-                      const bricksCount = getValidBricksCount(
-                        item.bricksCount
-                      );
+                    paginatedItems.map(
+                      (item) => {
+                        const bricksCount =
+                          getValidBricksCount(
+                            item.bricksCount
+                          );
 
-                      return (
-                        <tr
-                          key={item.id}
-                          className="border-t border-slate-100"
-                        >
-                          <td className="table-td font-bold">
-                            <div className="flex flex-col gap-1">
-                              <span>{item.pileName || "-"}</span>
+                        const brickSize =
+                          normalizeBrickSize(
+                            item.brickSize
+                          );
 
-                              {item.syncStatus === "pending" && (
-                                <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
-                                  قيد المزامنة
+                        return (
+                          <tr
+                            key={
+                              item.id
+                            }
+                            className="border-t border-slate-100"
+                          >
+                            <td className="table-td font-bold">
+                              <div className="flex flex-col gap-1">
+                                <span>
+                                  {item.pileName ||
+                                    "-"}
                                 </span>
-                              )}
-                            </div>
-                          </td>
 
-                          <td className="table-td">
-                            <span className="badge bg-green-50 text-green-700">
-                              {item.cropType || "غير معلوم"}
-                            </span>
-                          </td>
+                                {item.syncStatus ===
+                                  "pending" && (
+                                  <span className="w-fit rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                                    قيد
+                                    المزامنة
+                                  </span>
+                                )}
+                              </div>
+                            </td>
 
-                          <td className="table-td">
-                            {item.farmName || "-"}
-                          </td>
+                            <td className="table-td">
+                              <span className="badge bg-green-50 text-green-700">
+                                {item.cropType ||
+                                  "غير معلوم"}
+                              </span>
+                            </td>
 
-                          <td className="table-td">
-                            {item.sprinklerName || "-"}
-                          </td>
+                            <td className="table-td">
+                              <span className="badge bg-slate-100 text-slate-700">
+                                {
+                                  brickSize
+                                }
+                              </span>
+                            </td>
 
-                          <td className="table-td">
-                            {bricksCount === null
-                              ? "غير محدد"
-                              : formatNumber(bricksCount)}
-                          </td>
+                            <td className="table-td">
+                              {item.farmName ||
+                                "-"}
+                            </td>
 
-                          <td className="table-td">
-                            <div className="flex gap-2">
-                              <Link
-                                href={`/heaps/${item.id}`}
-                                className="btn-secondary !p-2"
-                                title="عرض"
-                              >
-                                <FontAwesomeIcon icon={faEye} />
-                              </Link>
+                            <td className="table-td">
+                              {item.sprinklerName ||
+                                "-"}
+                            </td>
 
-                              {canManage && (
-                                <>
-                                  <Link
-                                    href={`/heaps/edit/${item.id}`}
-                                    className="btn-secondary !p-2"
-                                    title="تعديل"
-                                  >
-                                    <FontAwesomeIcon icon={faPen} />
-                                  </Link>
+                            <td className="table-td">
+                              {bricksCount ===
+                              null
+                                ? "غير محدد"
+                                : formatNumber(
+                                    bricksCount
+                                  )}
+                            </td>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => remove(item.id)}
-                                    className="btn-danger !p-2"
-                                    title="حذف"
-                                  >
-                                    <FontAwesomeIcon icon={faTrash} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                            <td className="table-td">
+                              <div className="flex gap-2">
+                                <Link
+                                  href={`/heaps/${item.id}`}
+                                  className="btn-secondary !p-2"
+                                  title="عرض"
+                                >
+                                  <FontAwesomeIcon
+                                    icon={
+                                      faEye
+                                    }
+                                  />
+                                </Link>
+
+                                {canManage && (
+                                  <>
+                                    <Link
+                                      href={`/heaps/edit/${item.id}`}
+                                      className="btn-secondary !p-2"
+                                      title="تعديل"
+                                    >
+                                      <FontAwesomeIcon
+                                        icon={
+                                          faPen
+                                        }
+                                      />
+                                    </Link>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        remove(
+                                          item.id
+                                        )
+                                      }
+                                      className="btn-danger !p-2"
+                                      title="حذف"
+                                    >
+                                      <FontAwesomeIcon
+                                        icon={
+                                          faTrash
+                                        }
+                                      />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                    )
                   )}
                 </tbody>
               </table>
             </div>
 
-            {filteredItems.length > PAGE_SIZE && (
+            {filteredItems.length >
+              PAGE_SIZE && (
               <div className="mt-6 flex items-center justify-center gap-3">
                 <button
                   type="button"
-                  disabled={currentPage === 1}
+                  disabled={
+                    currentPage === 1
+                  }
                   onClick={() =>
-                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    setCurrentPage(
+                      (prev) =>
+                        Math.max(
+                          prev - 1,
+                          1
+                        )
+                    )
                   }
                   className="btn-secondary disabled:opacity-50"
                 >
@@ -1481,15 +2225,24 @@ export default function HeapsPage() {
                 </button>
 
                 <span className="font-bold text-slate-700">
-                  صفحة {currentPage} من {totalPages}
+                  صفحة{" "}
+                  {currentPage} من{" "}
+                  {totalPages}
                 </span>
 
                 <button
                   type="button"
-                  disabled={currentPage === totalPages}
+                  disabled={
+                    currentPage ===
+                    totalPages
+                  }
                   onClick={() =>
-                    setCurrentPage((prev) =>
-                      Math.min(prev + 1, totalPages)
+                    setCurrentPage(
+                      (prev) =>
+                        Math.min(
+                          prev + 1,
+                          totalPages
+                        )
                     )
                   }
                   className="btn-secondary disabled:opacity-50"
