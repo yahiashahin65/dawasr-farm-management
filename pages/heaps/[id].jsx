@@ -13,17 +13,55 @@ import useUserRole from "../../hooks/useUserRole";
 
 const getHeapFromCache = (heapId) => {
   const cached = getCachedCollection("cache:heaps");
+
   return cached.find((item) => item.id === heapId) || null;
+};
+
+const getBrickSize = (value) => {
+  const allowedValues = [
+    "لبنه مشروع",
+    "لبنه صغيره",
+    "غير معلوم",
+  ];
+
+  if (!value) {
+    return "غير معلوم";
+  }
+
+  return allowedValues.includes(value)
+    ? value
+    : "غير معلوم";
+};
+
+const formatNumber = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "0";
+  }
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return value;
+  }
+
+  return number.toLocaleString("ar-EG");
 };
 
 export default function HeapDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
+
   const { canManage } = useUserRole();
 
   const [heap, setHeap] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [offlineNotice, setOfflineNotice] = useState("");
+
+  const [offlineNotice, setOfflineNotice] =
+    useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -38,14 +76,25 @@ export default function HeapDetailsPage() {
           setHeap(cachedHeap);
 
           if (!isOnline()) {
-            setOfflineNotice("يتم عرض البيانات من الكاش لأن الجهاز غير متصل");
+            setOfflineNotice(
+              "يتم عرض البيانات من الكاش لان الجهاز غير متصل"
+            );
+
             setLoading(false);
+
             return;
           }
         }
 
-        const heapRef = doc(db, "heaps", id);
-        const heapSnap = await getDoc(heapRef);
+        const heapRef = doc(
+          db,
+          "heaps",
+          id
+        );
+
+        const heapSnap = await getDoc(
+          heapRef
+        );
 
         if (heapSnap.exists()) {
           setHeap({
@@ -58,13 +107,19 @@ export default function HeapDetailsPage() {
       } catch (error) {
         console.error(error);
 
-        const cachedHeap = getHeapFromCache(id);
+        const cachedHeap =
+          getHeapFromCache(id);
 
         if (cachedHeap) {
           setHeap(cachedHeap);
-          setOfflineNotice("تعذر الاتصال، يتم عرض آخر نسخة محفوظة من الكاش");
+
+          setOfflineNotice(
+            "تعذر الاتصال يتم عرض اخر نسخه محفوظه من الكاش"
+          );
         } else {
-          alert("حدث خطأ أثناء تحميل بيانات الكوم");
+          alert(
+            "حدث خطا اثناء تحميل بيانات الكوم"
+          );
         }
       } finally {
         setLoading(false);
@@ -78,9 +133,13 @@ export default function HeapDetailsPage() {
     <ProtectedRoute>
       <Layout title="تفاصيل الكوم">
         {loading ? (
-          <div className="page-card p-5">جاري تحميل البيانات...</div>
+          <div className="page-card p-5">
+            جاري تحميل البيانات...
+          </div>
         ) : !heap ? (
-          <div className="page-card p-5">الكوم غير موجود</div>
+          <div className="page-card p-5">
+            الكوم غير موجود
+          </div>
         ) : (
           <div className="page-card max-w-5xl p-5 space-y-5">
             {offlineNotice && (
@@ -89,9 +148,11 @@ export default function HeapDetailsPage() {
               </div>
             )}
 
-            {heap.syncStatus === "pending" && (
+            {heap.syncStatus ===
+              "pending" && (
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-700">
-                هذا الكوم قيد المزامنة وسيتم رفع التغييرات عند عودة الاتصال
+                هذا الكوم قيد المزامنه وسيتم
+                رفع التغييرات عند عوده الاتصال
               </div>
             )}
 
@@ -101,7 +162,10 @@ export default function HeapDetailsPage() {
               </h1>
 
               {canManage && (
-                <Link href={`/heaps/edit/${heap.id}`} className="btn-primary">
+                <Link
+                  href={`/heaps/edit/${heap.id}`}
+                  className="btn-primary"
+                >
                   تعديل الكوم
                 </Link>
               )}
@@ -111,7 +175,10 @@ export default function HeapDetailsPage() {
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
                 <img
                   src={heap.imageUrl}
-                  alt={heap.pileName || "صورة الكوم"}
+                  alt={
+                    heap.pileName ||
+                    "صوره الكوم"
+                  }
                   className="max-h-80 w-full rounded-2xl object-contain"
                 />
               </div>
@@ -119,50 +186,88 @@ export default function HeapDetailsPage() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-500">اسم الكوم</p>
+                <p className="text-sm font-bold text-slate-500">
+                  اسم الكوم
+                </p>
+
                 <p className="mt-1 text-lg font-black text-slate-800">
                   {heap.pileName || "-"}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-500">نوع الكوم</p>
+                <p className="text-sm font-bold text-slate-500">
+                  نوع الكوم
+                </p>
+
                 <p className="mt-1 text-lg font-black text-slate-800">
-                  {heap.cropType || "-"}
+                  {heap.cropType ||
+                    "غير معلوم"}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-500">المزرعة</p>
+                <p className="text-sm font-bold text-slate-500">
+                  حجم اللبنه
+                </p>
+
+                <p className="mt-1 text-lg font-black text-slate-800">
+                  {getBrickSize(
+                    heap.brickSize
+                  )}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-slate-500">
+                  المزرعه
+                </p>
+
                 <p className="mt-1 text-lg font-black text-slate-800">
                   {heap.farmName || "-"}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-500">الرشاش</p>
+                <p className="text-sm font-bold text-slate-500">
+                  الرشاش
+                </p>
+
                 <p className="mt-1 text-lg font-black text-slate-800">
-                  {heap.sprinklerName || "-"}
+                  {heap.sprinklerName ||
+                    "-"}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm font-bold text-slate-500">عدد اللبن</p>
+                <p className="text-sm font-bold text-slate-500">
+                  عدد اللبن
+                </p>
+
                 <p className="mt-1 text-lg font-black text-slate-800">
-                  {heap.bricksCount || 0}
+                  {formatNumber(
+                    heap.bricksCount
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-bold text-slate-500">ملاحظات</p>
+              <p className="text-sm font-bold text-slate-500">
+                ملاحظات
+              </p>
+
               <p className="mt-1 whitespace-pre-line text-slate-800">
-                {heap.notes || "لا يوجد"}
+                {heap.notes ||
+                  "لا يوجد"}
               </p>
             </div>
 
-            <Link href="/heaps" className="btn-secondary inline-block">
-              رجوع للأكوام
+            <Link
+              href="/heaps"
+              className="btn-secondary inline-block"
+            >
+              رجوع للاكوام
             </Link>
           </div>
         )}
