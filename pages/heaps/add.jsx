@@ -24,7 +24,18 @@ import Layout from "../../components/Layout";
 import AppLoader from "../../components/AppLoader";
 import useUserRole from "../../hooks/useUserRole";
 
-const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
+const DEFAULT_HEAP_CROP_TYPES = [
+  "برسيم",
+  "رودس",
+  "تبن",
+  "غير معلوم",
+];
+
+const BRICK_SIZE_OPTIONS = [
+  "لبنه مشروع",
+  "لبنه صغيره",
+  "غير معلوم",
+];
 
 const HEAP_DRAFT_KEY = "heap:add:draft";
 
@@ -33,6 +44,7 @@ const createLocalId = () =>
 
 const addToHeapsCache = (heap) => {
   const cached = getCachedCollection("cache:heaps");
+
   setCachedCollection("cache:heaps", [heap, ...cached]);
 };
 
@@ -41,7 +53,9 @@ export default function AddHeapPage() {
   const { canManage, loadingRole } = useUserRole();
 
   const [farms, setFarms] = useState([]);
-  const [cropOptions, setCropOptions] = useState(DEFAULT_HEAP_CROP_TYPES);
+  const [cropOptions, setCropOptions] = useState(
+    DEFAULT_HEAP_CROP_TYPES
+  );
 
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -51,6 +65,7 @@ export default function AddHeapPage() {
     pileName: "",
     farmId: "",
     cropType: "غير معلوم",
+    brickSize: "غير معلوم",
     sprinklerName: "",
     carsCount: 0,
     bricksPerCar: "",
@@ -64,7 +79,13 @@ export default function AddHeapPage() {
 
     if (saved) {
       try {
-        setForm((prev) => ({ ...prev, ...JSON.parse(saved) }));
+        const parsed = JSON.parse(saved);
+
+        setForm((prev) => ({
+          ...prev,
+          ...parsed,
+          brickSize: parsed.brickSize || "غير معلوم",
+        }));
       } catch {
         localStorage.removeItem(HEAP_DRAFT_KEY);
       }
@@ -72,7 +93,10 @@ export default function AddHeapPage() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(HEAP_DRAFT_KEY, JSON.stringify(form));
+    localStorage.setItem(
+      HEAP_DRAFT_KEY,
+      JSON.stringify(form)
+    );
   }, [form]);
 
   useEffect(() => {
@@ -92,23 +116,41 @@ export default function AddHeapPage() {
         ]);
 
         const cleanFarms = farmsSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "");
+          .map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+          .filter(
+            (item) =>
+              item.name &&
+              item.name.trim() !== ""
+          );
 
         setFarms(cleanFarms);
 
-        const settingsCropTypes = settings.cropType || [];
+        const settingsCropTypes =
+          settings.cropType || [];
 
         setCropOptions(
           settingsCropTypes.length
-            ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
+            ? Array.from(
+                new Set([
+                  ...settingsCropTypes,
+                  "تبن",
+                  "غير معلوم",
+                ])
+              )
             : DEFAULT_HEAP_CROP_TYPES
         );
       } catch {
-        const cachedFarms = getCachedCollection("cache:farms");
+        const cachedFarms =
+          getCachedCollection("cache:farms");
+
         setFarms(cachedFarms);
 
-        setCropOptions(DEFAULT_HEAP_CROP_TYPES);
+        setCropOptions(
+          DEFAULT_HEAP_CROP_TYPES
+        );
       }
     };
 
@@ -121,23 +163,35 @@ export default function AddHeapPage() {
       return;
     }
 
-    const previewUrl = URL.createObjectURL(image);
+    const previewUrl =
+      URL.createObjectURL(image);
+
     setImagePreview(previewUrl);
 
-    return () => URL.revokeObjectURL(previewUrl);
+    return () =>
+      URL.revokeObjectURL(previewUrl);
   }, [image]);
 
   const finalCropOptions = useMemo(() => {
     return Array.from(
-      new Set([
-        ...(cropOptions.length ? cropOptions : DEFAULT_SYSTEM_SETTINGS.cropType),
-        form.cropType,
-      ].filter(Boolean))
+      new Set(
+        [
+          ...(cropOptions.length
+            ? cropOptions
+            : DEFAULT_SYSTEM_SETTINGS.cropType),
+          form.cropType,
+        ].filter(Boolean)
+      )
     );
   }, [cropOptions, form.cropType]);
 
-  const calculateBricksCount = (carsCount, bricksPerCar, lastCarExtra) =>
-    Number(carsCount || 0) * Number(bricksPerCar || 0) +
+  const calculateBricksCount = (
+    carsCount,
+    bricksPerCar,
+    lastCarExtra
+  ) =>
+    Number(carsCount || 0) *
+      Number(bricksPerCar || 0) +
     Number(lastCarExtra || 0);
 
   const updateHeapCounter = (nextForm) => {
@@ -157,7 +211,8 @@ export default function AddHeapPage() {
     setForm((prev) =>
       updateHeapCounter({
         ...prev,
-        carsCount: Number(prev.carsCount || 0) + 1,
+        carsCount:
+          Number(prev.carsCount || 0) + 1,
       })
     );
   };
@@ -166,7 +221,10 @@ export default function AddHeapPage() {
     setForm((prev) =>
       updateHeapCounter({
         ...prev,
-        carsCount: Math.max(0, Number(prev.carsCount || 0) - 1),
+        carsCount: Math.max(
+          0,
+          Number(prev.carsCount || 0) - 1
+        ),
       })
     );
   };
@@ -193,129 +251,238 @@ export default function AddHeapPage() {
     }
 
     if (!form.farmId) {
-      alert("المزرعة مطلوبة");
+      alert("المزرعه مطلوبه");
       return;
     }
 
     if (!form.sprinklerName.trim()) {
-      alert("مكان أو رقم الرشاش مطلوب");
+      alert("مكان او رقم الرشاش مطلوب");
       return;
     }
 
     setLoading(true);
 
     try {
-      const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+      const selectedFarm = farms.find(
+        (farm) => farm.id === form.farmId
+      );
+
       const localId = createLocalId();
 
       const basePayload = {
         pileName: form.pileName.trim(),
+
         farmId: form.farmId,
-        farmName: selectedFarm?.name || "",
-        cropType: form.cropType || "غير معلوم",
-        sprinklerName: form.sprinklerName.trim(),
-        bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
-        carsCount: Number(form.carsCount || 0),
-        bricksPerCar: form.bricksPerCar ? Number(form.bricksPerCar) : null,
-        lastCarExtra: form.lastCarExtra ? Number(form.lastCarExtra) : 0,
+
+        farmName:
+          selectedFarm?.name || "",
+
+        cropType:
+          form.cropType || "غير معلوم",
+
+        brickSize:
+          form.brickSize || "غير معلوم",
+
+        sprinklerName:
+          form.sprinklerName.trim(),
+
+        bricksCount: form.bricksCount
+          ? Number(form.bricksCount)
+          : null,
+
+        carsCount: Number(
+          form.carsCount || 0
+        ),
+
+        bricksPerCar: form.bricksPerCar
+          ? Number(form.bricksPerCar)
+          : null,
+
+        lastCarExtra: form.lastCarExtra
+          ? Number(form.lastCarExtra)
+          : 0,
+
         notes: form.notes.trim(),
       };
 
       if (!isOnline()) {
         const localHeap = {
           id: localId,
+
           ...basePayload,
+
           imageUrl: "",
+
           isOffline: true,
+
           syncStatus: "pending",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+
+          createdAt:
+            new Date().toISOString(),
+
+          updatedAt:
+            new Date().toISOString(),
         };
 
         addToHeapsCache(localHeap);
 
         addOfflineOperation({
           collectionName: "heaps",
+
           operation: "create",
+
           documentId: localId,
+
           payload: {
             ...basePayload,
+
             imageUrl: "",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+
+            createdAt:
+              serverTimestamp(),
+
+            updatedAt:
+              serverTimestamp(),
           },
+
           meta: {
-            label: "إضافة كوم",
+            label: "اضافه كوم",
             name: basePayload.pileName,
           },
         });
 
-        localStorage.removeItem(HEAP_DRAFT_KEY);
+        localStorage.removeItem(
+          HEAP_DRAFT_KEY
+        );
 
-        alert("تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
+        alert(
+          "تم حفظ الكوم محليا وسيتم رفعه عند عوده الاتصال"
+        );
+
         router.push("/heaps");
+
         return;
       }
 
-      const imageUrl = await uploadImage();
+      const imageUrl =
+        await uploadImage();
 
-      await addDoc(collection(db, "heaps"), {
-        ...basePayload,
-        imageUrl,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await addDoc(
+        collection(db, "heaps"),
+        {
+          ...basePayload,
 
-      localStorage.removeItem(HEAP_DRAFT_KEY);
+          imageUrl,
+
+          createdAt:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
+
+      localStorage.removeItem(
+        HEAP_DRAFT_KEY
+      );
 
       router.push("/heaps");
     } catch (error) {
       console.error(error);
 
-      const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+      const selectedFarm = farms.find(
+        (farm) => farm.id === form.farmId
+      );
+
       const localId = createLocalId();
 
       const fallbackPayload = {
         pileName: form.pileName.trim(),
+
         farmId: form.farmId,
-        farmName: selectedFarm?.name || "",
-        cropType: form.cropType || "غير معلوم",
-        sprinklerName: form.sprinklerName.trim(),
-        bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
-        carsCount: Number(form.carsCount || 0),
-        bricksPerCar: form.bricksPerCar ? Number(form.bricksPerCar) : null,
-        lastCarExtra: form.lastCarExtra ? Number(form.lastCarExtra) : 0,
+
+        farmName:
+          selectedFarm?.name || "",
+
+        cropType:
+          form.cropType || "غير معلوم",
+
+        brickSize:
+          form.brickSize || "غير معلوم",
+
+        sprinklerName:
+          form.sprinklerName.trim(),
+
+        bricksCount: form.bricksCount
+          ? Number(form.bricksCount)
+          : null,
+
+        carsCount: Number(
+          form.carsCount || 0
+        ),
+
+        bricksPerCar: form.bricksPerCar
+          ? Number(form.bricksPerCar)
+          : null,
+
+        lastCarExtra: form.lastCarExtra
+          ? Number(form.lastCarExtra)
+          : 0,
+
         imageUrl: "",
+
         notes: form.notes.trim(),
       };
 
       addToHeapsCache({
         id: localId,
+
         ...fallbackPayload,
+
         isOffline: true,
+
         syncStatus: "pending",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+
+        createdAt:
+          new Date().toISOString(),
+
+        updatedAt:
+          new Date().toISOString(),
       });
 
       addOfflineOperation({
         collectionName: "heaps",
+
         operation: "create",
+
         documentId: localId,
+
         payload: {
           ...fallbackPayload,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+
+          createdAt:
+            serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp(),
         },
+
         meta: {
-          label: "إضافة كوم",
-          name: fallbackPayload.pileName,
+          label: "اضافه كوم",
+
+          name:
+            fallbackPayload.pileName,
         },
       });
 
-      localStorage.removeItem(HEAP_DRAFT_KEY);
+      localStorage.removeItem(
+        HEAP_DRAFT_KEY
+      );
 
-      alert("تعذر الاتصال، تم حفظ الكوم محليًا وسيتم رفعه عند عودة الاتصال");
+      alert(
+        "تعذر الاتصال تم حفظ الكوم محليا وسيتم رفعه عند عوده الاتصال"
+      );
+
       router.push("/heaps");
     } finally {
       setLoading(false);
@@ -325,11 +492,11 @@ export default function AddHeapPage() {
   if (loadingRole || !canManage) {
     return (
       <ProtectedRoute>
-        <Layout title="إضافة كوم">
+        <Layout title="اضافه كوم">
           <AppLoader
             variant="compact"
             title="جاري التحقق من الصلاحيات..."
-            subtitle="يتم التأكد من صلاحية إضافة كوم"
+            subtitle="يتم التاكد من صلاحيه اضافه كوم"
           />
         </Layout>
       </ProtectedRoute>
@@ -338,24 +505,45 @@ export default function AddHeapPage() {
 
   return (
     <ProtectedRoute>
-      <Layout title="إضافة كوم">
-        <form onSubmit={submit} className="page-card max-w-5xl p-5 space-y-4">
+      <Layout title="اضافه كوم">
+        <form
+          onSubmit={submit}
+          className="page-card max-w-5xl p-5 space-y-4"
+        >
           <div className="grid gap-4 md:grid-cols-2">
             <input
               className="form-input"
-              placeholder="اسم الكوم، مثال: كوم 1"
+              placeholder="اسم الكوم مثال: كوم 1"
               value={form.pileName}
-              onChange={(e) => setForm({ ...form, pileName: e.target.value })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  pileName:
+                    e.target.value,
+                })
+              }
             />
 
             <select
               className="form-input"
               value={form.farmId}
-              onChange={(e) => setForm({ ...form, farmId: e.target.value })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  farmId:
+                    e.target.value,
+                })
+              }
             >
-              <option value="">اختر المزرعة</option>
+              <option value="">
+                اختر المزرعه
+              </option>
+
               {farms.map((farm) => (
-                <option key={farm.id} value={farm.id}>
+                <option
+                  key={farm.id}
+                  value={farm.id}
+                >
                   {farm.name}
                 </option>
               ))}
@@ -364,35 +552,84 @@ export default function AddHeapPage() {
             <select
               className="form-input"
               value={form.cropType}
-              onChange={(e) => setForm({ ...form, cropType: e.target.value })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  cropType:
+                    e.target.value,
+                })
+              }
             >
-              <option value="">اختر نوع المحصول</option>
-              {finalCropOptions.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
+              <option value="">
+                اختر نوع المحصول
+              </option>
+
+              {finalCropOptions.map(
+                (type) => (
+                  <option
+                    key={type}
+                    value={type}
+                  >
+                    {type}
+                  </option>
+                )
+              )}
+            </select>
+
+            <select
+              className="form-input"
+              value={form.brickSize}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  brickSize:
+                    e.target.value,
+                })
+              }
+            >
+              <option value="">
+                اختر حجم اللبنه
+              </option>
+
+              {BRICK_SIZE_OPTIONS.map(
+                (size) => (
+                  <option
+                    key={size}
+                    value={size}
+                  >
+                    {size}
+                  </option>
+                )
+              )}
             </select>
 
             <input
               className="form-input"
-              placeholder="مكان/رقم الرشاش، مثال: رشاش 18"
-              value={form.sprinklerName}
+              placeholder="مكان/رقم الرشاش مثال: رشاش 18"
+              value={
+                form.sprinklerName
+              }
               onChange={(e) =>
-                setForm({ ...form, sprinklerName: e.target.value })
+                setForm({
+                  ...form,
+                  sprinklerName:
+                    e.target.value,
+                })
               }
             />
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <label className="block text-sm font-bold text-slate-700">
-                عداد العربيات المحملة
+                عداد العربيات المحمله
               </label>
 
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   className="btn-secondary px-5 text-xl"
-                  onClick={decrementCars}
+                  onClick={
+                    decrementCars
+                  }
                 >
                   -
                 </button>
@@ -401,13 +638,28 @@ export default function AddHeapPage() {
                   className="form-input text-center text-xl font-bold"
                   type="number"
                   min="0"
-                  value={form.carsCount}
+                  value={
+                    form.carsCount
+                  }
                   onChange={(e) =>
-                    setForm((prev) =>
-                      updateHeapCounter({
-                        ...prev,
-                        carsCount: Math.max(0, Number(e.target.value || 0)),
-                      })
+                    setForm(
+                      (prev) =>
+                        updateHeapCounter(
+                          {
+                            ...prev,
+
+                            carsCount:
+                              Math.max(
+                                0,
+                                Number(
+                                  e
+                                    .target
+                                    .value ||
+                                    0
+                                )
+                              ),
+                          }
+                        )
                     )
                   }
                 />
@@ -415,7 +667,9 @@ export default function AddHeapPage() {
                 <button
                   type="button"
                   className="btn-primary px-5 text-xl"
-                  onClick={incrementCars}
+                  onClick={
+                    incrementCars
+                  }
                 >
                   +
                 </button>
@@ -426,13 +680,17 @@ export default function AddHeapPage() {
               className="form-input"
               type="number"
               min="0"
-              placeholder="قيمة العربية الواحدة، مثال: 50 أو 52"
-              value={form.bricksPerCar}
+              placeholder="قيمه العربيه الواحده مثال: 50 او 52"
+              value={
+                form.bricksPerCar
+              }
               onChange={(e) =>
                 setForm((prev) =>
                   updateHeapCounter({
                     ...prev,
-                    bricksPerCar: e.target.value,
+
+                    bricksPerCar:
+                      e.target.value,
                   })
                 )
               }
@@ -442,13 +700,17 @@ export default function AddHeapPage() {
               className="form-input"
               type="number"
               min="0"
-              placeholder="زيادة آخر عربية، مثال: 10"
-              value={form.lastCarExtra}
+              placeholder="زياده اخر عربيه مثال: 10"
+              value={
+                form.lastCarExtra
+              }
               onChange={(e) =>
                 setForm((prev) =>
                   updateHeapCounter({
                     ...prev,
-                    lastCarExtra: e.target.value,
+
+                    lastCarExtra:
+                      e.target.value,
                   })
                 )
               }
@@ -457,8 +719,10 @@ export default function AddHeapPage() {
             <input
               className="form-input bg-slate-100 font-bold"
               type="number"
-              placeholder="إجمالي عدد اللبن"
-              value={form.bricksCount}
+              placeholder="اجمالي عدد اللبن"
+              value={
+                form.bricksCount
+              }
               readOnly
             />
           </div>
@@ -467,22 +731,36 @@ export default function AddHeapPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
                 تصوير بالكاميرا
+
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
                   className="hidden"
-                  onChange={(e) => setImage(e.target.files?.[0] || null)}
+                  onChange={(e) =>
+                    setImage(
+                      e.target
+                        .files?.[0] ||
+                        null
+                    )
+                  }
                 />
               </label>
 
               <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
                 رفع من الجهاز
+
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => setImage(e.target.files?.[0] || null)}
+                  onChange={(e) =>
+                    setImage(
+                      e.target
+                        .files?.[0] ||
+                        null
+                    )
+                  }
                 />
               </label>
             </div>
@@ -491,23 +769,27 @@ export default function AddHeapPage() {
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
                 <img
                   src={imagePreview}
-                  alt="معاينة صورة الكوم"
+                  alt="معاينه صوره الكوم"
                   className="max-h-72 w-full rounded-2xl object-contain"
                 />
 
                 {!isOnline() && (
                   <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
-                    الصورة لن تُرفع أثناء عدم الاتصال. يمكن رفعها لاحقًا بعد
-                    المزامنة.
+                    الصوره لن ترفع
+                    اثناء عدم الاتصال
+                    ويمكن رفعها لاحقا
+                    بعد المزامنه
                   </p>
                 )}
 
                 <button
                   type="button"
                   className="btn-secondary mt-3"
-                  onClick={() => setImage(null)}
+                  onClick={() =>
+                    setImage(null)
+                  }
                 >
-                  حذف الصورة المختارة
+                  حذف الصوره المختاره
                 </button>
               </div>
             )}
@@ -517,11 +799,22 @@ export default function AddHeapPage() {
             className="form-input h-28"
             placeholder="ملاحظات"
             value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                notes:
+                  e.target.value,
+              })
+            }
           />
 
-          <button disabled={loading} className="btn-primary">
-            {loading ? "جاري الحفظ..." : "حفظ الكوم"}
+          <button
+            disabled={loading}
+            className="btn-primary"
+          >
+            {loading
+              ? "جاري الحفظ..."
+              : "حفظ الكوم"}
           </button>
         </form>
       </Layout>
