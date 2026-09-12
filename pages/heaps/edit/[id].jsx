@@ -26,18 +26,31 @@ import Layout from "../../../components/Layout";
 import AppLoader from "../../../components/AppLoader";
 import useUserRole from "../../../hooks/useUserRole";
 
-const DEFAULT_HEAP_CROP_TYPES = ["برسيم", "رودس", "تبن", "غير معلوم"];
+const DEFAULT_HEAP_CROP_TYPES = [
+  "برسيم",
+  "رودس",
+  "تبن",
+  "غير معلوم",
+];
+
+const BRICK_SIZE_OPTIONS = [
+  "لبنه مشروع",
+  "لبنه صغيره",
+  "غير معلوم",
+];
 
 const cleanList = (items = []) =>
   items.filter((item) => item.name && item.name.trim() !== "");
 
 const getHeapFromCache = (heapId) => {
   const cached = getCachedCollection("cache:heaps");
+
   return cached.find((item) => item.id === heapId) || null;
 };
 
 const updateHeapCache = (heapId, payload) => {
   const cached = getCachedCollection("cache:heaps");
+
   const exists = cached.some((item) => item.id === heapId);
 
   const updatedItem = {
@@ -50,7 +63,12 @@ const updateHeapCache = (heapId, payload) => {
 
   const next = exists
     ? cached.map((item) =>
-        item.id === heapId ? { ...item, ...updatedItem } : item
+        item.id === heapId
+          ? {
+              ...item,
+              ...updatedItem,
+            }
+          : item
       )
     : [updatedItem, ...cached];
 
@@ -59,13 +77,19 @@ const updateHeapCache = (heapId, payload) => {
 
 export default function EditHeapPage() {
   const router = useRouter();
+
   const { id } = router.query;
+
   const { canManage, loadingRole } = useUserRole();
 
   const [farms, setFarms] = useState([]);
-  const [cropOptions, setCropOptions] = useState(DEFAULT_HEAP_CROP_TYPES);
+
+  const [cropOptions, setCropOptions] = useState(
+    DEFAULT_HEAP_CROP_TYPES
+  );
 
   const [image, setImage] = useState(null);
+
   const [imagePreview, setImagePreview] = useState("");
 
   const [form, setForm] = useState({
@@ -73,6 +97,7 @@ export default function EditHeapPage() {
     farmId: "",
     farmName: "",
     cropType: "غير معلوم",
+    brickSize: "غير معلوم",
     sprinklerName: "",
     bricksCount: "",
     imageUrl: "",
@@ -80,7 +105,9 @@ export default function EditHeapPage() {
   });
 
   const [initialLoading, setInitialLoading] = useState(true);
+
   const [saving, setSaving] = useState(false);
+
   const [offlineNotice, setOfflineNotice] = useState("");
 
   useEffect(() => {
@@ -97,7 +124,10 @@ export default function EditHeapPage() {
 
       try {
         const cachedHeap = getHeapFromCache(id);
-        const cachedFarms = cleanList(getCachedCollection("cache:farms"));
+
+        const cachedFarms = cleanList(
+          getCachedCollection("cache:farms")
+        );
 
         if (cachedHeap) {
           setForm({
@@ -105,6 +135,7 @@ export default function EditHeapPage() {
             farmId: cachedHeap.farmId || "",
             farmName: cachedHeap.farmName || "",
             cropType: cachedHeap.cropType || "غير معلوم",
+            brickSize: cachedHeap.brickSize || "غير معلوم",
             sprinklerName: cachedHeap.sprinklerName || "",
             bricksCount:
               cachedHeap.bricksCount === null ||
@@ -119,8 +150,13 @@ export default function EditHeapPage() {
 
           if (!isOnline()) {
             setCropOptions(DEFAULT_HEAP_CROP_TYPES);
-            setOfflineNotice("يتم تعديل البيانات من الكاش لأن الجهاز غير متصل");
+
+            setOfflineNotice(
+              "يتم تعديل البيانات من الكاش لان الجهاز غير متصل"
+            );
+
             setInitialLoading(false);
+
             return;
           }
         }
@@ -132,8 +168,13 @@ export default function EditHeapPage() {
         ]);
 
         const cleanFarms = farmsSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => item.name && item.name.trim() !== "");
+          .map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+          .filter(
+            (item) => item.name && item.name.trim() !== ""
+          );
 
         setFarms(cleanFarms);
 
@@ -141,7 +182,13 @@ export default function EditHeapPage() {
 
         setCropOptions(
           settingsCropTypes.length
-            ? Array.from(new Set([...settingsCropTypes, "تبن", "غير معلوم"]))
+            ? Array.from(
+                new Set([
+                  ...settingsCropTypes,
+                  "تبن",
+                  "غير معلوم",
+                ])
+              )
             : DEFAULT_HEAP_CROP_TYPES
         );
 
@@ -153,9 +200,11 @@ export default function EditHeapPage() {
             farmId: data.farmId || "",
             farmName: data.farmName || "",
             cropType: data.cropType || "غير معلوم",
+            brickSize: data.brickSize || "غير معلوم",
             sprinklerName: data.sprinklerName || "",
             bricksCount:
-              data.bricksCount === null || data.bricksCount === undefined
+              data.bricksCount === null ||
+              data.bricksCount === undefined
                 ? ""
                 : data.bricksCount,
             imageUrl: data.imageUrl || "",
@@ -163,6 +212,7 @@ export default function EditHeapPage() {
           });
         } else if (!cachedHeap) {
           alert("الكوم غير موجود");
+
           router.push("/heaps");
         }
       } catch (error) {
@@ -176,6 +226,7 @@ export default function EditHeapPage() {
             farmId: cachedHeap.farmId || "",
             farmName: cachedHeap.farmName || "",
             cropType: cachedHeap.cropType || "غير معلوم",
+            brickSize: cachedHeap.brickSize || "غير معلوم",
             sprinklerName: cachedHeap.sprinklerName || "",
             bricksCount:
               cachedHeap.bricksCount === null ||
@@ -186,11 +237,20 @@ export default function EditHeapPage() {
             notes: cachedHeap.notes || "",
           });
 
-          setFarms(cleanList(getCachedCollection("cache:farms")));
+          setFarms(
+            cleanList(
+              getCachedCollection("cache:farms")
+            )
+          );
+
           setCropOptions(DEFAULT_HEAP_CROP_TYPES);
-          setOfflineNotice("تعذر الاتصال، يتم تعديل آخر نسخة محفوظة من الكاش");
+
+          setOfflineNotice(
+            "تعذر الاتصال يتم تعديل اخر نسخه محفوظه من الكاش"
+          );
         } else {
-          alert("حدث خطأ أثناء تحميل بيانات الكوم");
+          alert("حدث خطا اثناء تحميل بيانات الكوم");
+
           router.push("/heaps");
         }
       } finally {
@@ -204,10 +264,12 @@ export default function EditHeapPage() {
   useEffect(() => {
     if (!image) {
       setImagePreview("");
+
       return;
     }
 
     const previewUrl = URL.createObjectURL(image);
+
     setImagePreview(previewUrl);
 
     return () => URL.revokeObjectURL(previewUrl);
@@ -215,15 +277,22 @@ export default function EditHeapPage() {
 
   const finalCropOptions = useMemo(() => {
     return Array.from(
-      new Set([
-        ...(cropOptions.length ? cropOptions : DEFAULT_SYSTEM_SETTINGS.cropType),
-        form.cropType,
-      ].filter(Boolean))
+      new Set(
+        [
+          ...(cropOptions.length
+            ? cropOptions
+            : DEFAULT_SYSTEM_SETTINGS.cropType),
+          form.cropType,
+        ].filter(Boolean)
+      )
     );
   }, [cropOptions, form.cropType]);
 
   const uploadImage = async () => {
-    if (!image) return form.imageUrl || "";
+    if (!image) {
+      return form.imageUrl || "";
+    }
+
     return fileToFirestoreImage(image);
   };
 
@@ -231,39 +300,62 @@ export default function EditHeapPage() {
     e.preventDefault();
 
     if (!canManage) return;
+
     if (saving) return;
 
     if (!form.pileName.trim()) {
       alert("اسم الكوم مطلوب");
+
       return;
     }
 
     if (!form.farmId) {
-      alert("المزرعة مطلوبة");
+      alert("المزرعه مطلوبه");
+
       return;
     }
 
     if (!form.sprinklerName.trim()) {
-      alert("مكان أو رقم الرشاش مطلوب");
+      alert("مكان او رقم الرشاش مطلوب");
+
       return;
     }
 
     if (!isOnline() && image) {
-      alert("لا يمكن رفع صورة جديدة أثناء عدم الاتصال");
+      alert("لا يمكن رفع صوره جديده اثناء عدم الاتصال");
+
       return;
     }
 
     setSaving(true);
 
-    const selectedFarm = farms.find((farm) => farm.id === form.farmId);
+    const selectedFarm = farms.find(
+      (farm) => farm.id === form.farmId
+    );
 
     const basePayload = {
       pileName: form.pileName.trim(),
+
       farmId: form.farmId,
-      farmName: selectedFarm?.name || form.farmName || "",
-      cropType: form.cropType || "غير معلوم",
-      sprinklerName: form.sprinklerName.trim(),
-      bricksCount: form.bricksCount ? Number(form.bricksCount) : null,
+
+      farmName:
+        selectedFarm?.name ||
+        form.farmName ||
+        "",
+
+      cropType:
+        form.cropType || "غير معلوم",
+
+      brickSize:
+        form.brickSize || "غير معلوم",
+
+      sprinklerName:
+        form.sprinklerName.trim(),
+
+      bricksCount: form.bricksCount
+        ? Number(form.bricksCount)
+        : null,
+
       notes: form.notes.trim(),
     };
 
@@ -271,45 +363,71 @@ export default function EditHeapPage() {
       if (!isOnline()) {
         const offlinePayload = {
           ...basePayload,
-          imageUrl: form.imageUrl || "",
+
+          imageUrl:
+            form.imageUrl || "",
         };
 
-        updateHeapCache(id, offlinePayload);
+        updateHeapCache(
+          id,
+          offlinePayload
+        );
 
         addOfflineOperation({
           collectionName: "heaps",
+
           operation: "update",
+
           documentId: id,
+
           payload: {
             ...offlinePayload,
-            updatedAt: serverTimestamp(),
+
+            updatedAt:
+              serverTimestamp(),
           },
+
           meta: {
             label: "تعديل كوم",
-            name: offlinePayload.pileName,
+
+            name:
+              offlinePayload.pileName,
           },
         });
 
-        alert("تم حفظ التعديل محليًا وسيتم رفعه عند عودة الاتصال");
+        alert(
+          "تم حفظ التعديل محليا وسيتم رفعه عند عوده الاتصال"
+        );
+
         router.push("/heaps");
+
         return;
       }
 
-      const imageUrl = await uploadImage();
+      const imageUrl =
+        await uploadImage();
 
       const onlinePayload = {
         ...basePayload,
+
         imageUrl,
       };
 
-      await updateDoc(doc(db, "heaps", id), {
-        ...onlinePayload,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(
+        doc(db, "heaps", id),
+        {
+          ...onlinePayload,
+
+          updatedAt:
+            serverTimestamp(),
+        }
+      );
 
       updateHeapCache(id, {
         ...onlinePayload,
+
         isOffline: false,
+
         syncStatus: "synced",
       });
 
@@ -319,26 +437,42 @@ export default function EditHeapPage() {
 
       const fallbackPayload = {
         ...basePayload,
-        imageUrl: form.imageUrl || "",
+
+        imageUrl:
+          form.imageUrl || "",
       };
 
-      updateHeapCache(id, fallbackPayload);
+      updateHeapCache(
+        id,
+        fallbackPayload
+      );
 
       addOfflineOperation({
         collectionName: "heaps",
+
         operation: "update",
+
         documentId: id,
+
         payload: {
           ...fallbackPayload,
-          updatedAt: serverTimestamp(),
+
+          updatedAt:
+            serverTimestamp(),
         },
+
         meta: {
           label: "تعديل كوم",
-          name: fallbackPayload.pileName,
+
+          name:
+            fallbackPayload.pileName,
         },
       });
 
-      alert("تعذر الاتصال، تم حفظ التعديل محليًا وسيتم رفعه عند عودة الاتصال");
+      alert(
+        "تعذر الاتصال تم حفظ التعديل محليا وسيتم رفعه عند عوده الاتصال"
+      );
+
       router.push("/heaps");
     } finally {
       setSaving(false);
@@ -352,7 +486,7 @@ export default function EditHeapPage() {
           <AppLoader
             variant="compact"
             title="جاري التحقق من الصلاحيات..."
-            subtitle="يتم التأكد من صلاحية تعديل الكوم"
+            subtitle="يتم التاكد من صلاحيه تعديل الكوم"
           />
         </Layout>
       </ProtectedRoute>
@@ -385,7 +519,11 @@ export default function EditHeapPage() {
                 placeholder="اسم الكوم"
                 value={form.pileName}
                 onChange={(e) =>
-                  setForm({ ...form, pileName: e.target.value })
+                  setForm({
+                    ...form,
+                    pileName:
+                      e.target.value,
+                  })
                 }
               />
 
@@ -393,13 +531,22 @@ export default function EditHeapPage() {
                 className="form-input"
                 value={form.farmId}
                 onChange={(e) =>
-                  setForm({ ...form, farmId: e.target.value })
+                  setForm({
+                    ...form,
+                    farmId:
+                      e.target.value,
+                  })
                 }
               >
-                <option value="">اختر المزرعة</option>
+                <option value="">
+                  اختر المزرعه
+                </option>
 
                 {farms.map((farm) => (
-                  <option key={farm.id} value={farm.id}>
+                  <option
+                    key={farm.id}
+                    value={farm.id}
+                  >
                     {farm.name}
                   </option>
                 ))}
@@ -409,24 +556,68 @@ export default function EditHeapPage() {
                 className="form-input"
                 value={form.cropType}
                 onChange={(e) =>
-                  setForm({ ...form, cropType: e.target.value })
+                  setForm({
+                    ...form,
+                    cropType:
+                      e.target.value,
+                  })
                 }
               >
-                <option value="">اختر نوع المحصول</option>
+                <option value="">
+                  اختر نوع المحصول
+                </option>
 
-                {finalCropOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
+                {finalCropOptions.map(
+                  (type) => (
+                    <option
+                      key={type}
+                      value={type}
+                    >
+                      {type}
+                    </option>
+                  )
+                )}
+              </select>
+
+              <select
+                className="form-input"
+                value={form.brickSize}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    brickSize:
+                      e.target.value,
+                  })
+                }
+              >
+                <option value="">
+                  اختر حجم اللبنه
+                </option>
+
+                {BRICK_SIZE_OPTIONS.map(
+                  (size) => (
+                    <option
+                      key={size}
+                      value={size}
+                    >
+                      {size}
+                    </option>
+                  )
+                )}
               </select>
 
               <input
                 className="form-input"
-                placeholder="مكان/رقم الرشاش، مثال: رشاش 18"
-                value={form.sprinklerName}
+                placeholder="مكان/رقم الرشاش مثال: رشاش 18"
+                value={
+                  form.sprinklerName
+                }
                 onChange={(e) =>
-                  setForm({ ...form, sprinklerName: e.target.value })
+                  setForm({
+                    ...form,
+                    sprinklerName:
+                      e.target.value,
+                  })
                 }
               />
 
@@ -434,45 +625,66 @@ export default function EditHeapPage() {
                 className="form-input"
                 type="number"
                 placeholder="عدد اللبن اختياري"
-                value={form.bricksCount}
+                value={
+                  form.bricksCount
+                }
                 onChange={(e) =>
-                  setForm({ ...form, bricksCount: e.target.value })
+                  setForm({
+                    ...form,
+                    bricksCount:
+                      e.target.value,
+                  })
                 }
               />
             </div>
 
             <div className="space-y-3">
-              {form.imageUrl && !imagePreview && (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
-                  <img
-                    src={form.imageUrl}
-                    alt="صورة الكوم الحالية"
-                    className="max-h-72 w-full rounded-2xl object-contain"
-                  />
-                </div>
-              )}
+              {form.imageUrl &&
+                !imagePreview && (
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
+                    <img
+                      src={
+                        form.imageUrl
+                      }
+                      alt="صوره الكوم الحاليه"
+                      className="max-h-72 w-full rounded-2xl object-contain"
+                    />
+                  </div>
+                )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
-                  تصوير صورة جديدة
+                  تصوير صوره جديده
 
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
                     className="hidden"
-                    onChange={(e) => setImage(e.target.files?.[0] || null)}
+                    onChange={(e) =>
+                      setImage(
+                        e.target
+                          .files?.[0] ||
+                          null
+                      )
+                    }
                   />
                 </label>
 
                 <label className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-center font-bold hover:bg-slate-50">
-                  رفع صورة جديدة من الجهاز
+                  رفع صوره جديده من الجهاز
 
                   <input
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => setImage(e.target.files?.[0] || null)}
+                    onChange={(e) =>
+                      setImage(
+                        e.target
+                          .files?.[0] ||
+                          null
+                      )
+                    }
                   />
                 </label>
               </div>
@@ -481,22 +693,26 @@ export default function EditHeapPage() {
                 <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3">
                   <img
                     src={imagePreview}
-                    alt="معاينة الصورة الجديدة"
+                    alt="معاينه الصوره الجديده"
                     className="max-h-72 w-full rounded-2xl object-contain"
                   />
 
                   {!isOnline() && (
                     <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">
-                      لا يمكن رفع صورة جديدة أثناء عدم الاتصال.
+                      لا يمكن رفع صوره
+                      جديده اثناء عدم
+                      الاتصال
                     </p>
                   )}
 
                   <button
                     type="button"
                     className="btn-secondary mt-3"
-                    onClick={() => setImage(null)}
+                    onClick={() =>
+                      setImage(null)
+                    }
                   >
-                    حذف الصورة المختارة
+                    حذف الصوره المختاره
                   </button>
                 </div>
               )}
@@ -506,11 +722,22 @@ export default function EditHeapPage() {
               className="form-input h-28"
               placeholder="ملاحظات"
               value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  notes:
+                    e.target.value,
+                })
+              }
             />
 
-            <button disabled={saving} className="btn-primary">
-              {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+            <button
+              disabled={saving}
+              className="btn-primary"
+            >
+              {saving
+                ? "جاري الحفظ..."
+                : "حفظ التعديلات"}
             </button>
           </form>
         )}
